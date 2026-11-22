@@ -79,7 +79,7 @@ nook images
 nook images build pi-dev --agent pi
 nook images build opencode-dev --agent opencode
 nook images build claude-dev --agent claude --set-default
-nook images build claude-pinned --agent claude --agent-version 2.1.99
+nook images build claude-pinned --agent claude --agent-version 2.1.323
 nook --agent claude --image claude-dev
 nook images default claude-dev           # Standard nur für Claude Code
 nook images remove claude-alt
@@ -176,7 +176,7 @@ mise run test:architecture
 
 Architekturtests laufen auch über `mise run test` und `mise run check`. Ein neuer Agent benötigt einen Adapter, einen Registry-Eintrag und die Erweiterung der expliziten Architekturregeln. Adapter liefern deklarative Telemetriepläne; nur der gemeinsame Launcher darf daraus private Host-Dateien und Mounts erstellen. Zusätzliche geschützte Gastpfade werden vom Adapter geliefert und beim Start geprüft.
 
-Die Gastadapter-Tests benötigen Node.js ab 22.19; ohne Node werden sie übersprungen. Prozess-E2E verwendet ausschließlich smolvm-Stubs und Testzugangsdaten, weder Docker noch einen Hypervisor. Echte VM-Tests für Pi und OpenCode sind separat opt-in und benötigen smolvm ab 1.33.0, einen funktionierenden Hypervisor und Internet für den lokalen Erstaufbau:
+Die Gastadapter-Tests benötigen Node.js ab 22.19; ohne Node werden sie übersprungen. Prozess-E2E verwendet ausschließlich smolvm-Stubs und Testzugangsdaten, weder Docker noch einen Hypervisor. Echte VM-Tests für Pi, OpenCode und Claude Code sind separat opt-in und benötigen smolvm ab 1.33.0, einen funktionierenden Hypervisor und Internet für den lokalen Erstaufbau:
 
 ```sh
 mise run test:vm

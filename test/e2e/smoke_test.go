@@ -99,10 +99,28 @@ func realVMLauncher(t *testing.T) (string, func(...string) string) {
 	return data, run
 }
 
-func TestRealVM(t *testing.T) {
+// Each agent must build successfully and launch with explicit and saved selections.
+// A real build also catches npm lifecycle-policy failures that CLI stubs cannot.
+func realVMSmoke(t *testing.T, agent, version string) (string, func(...string) string) {
+	t.Helper()
 	data, run := realVMLauncher(t)
-	run("--agent", "pi", "--profile", "smoke", "--agent-version", "1.4.0", "--cpus", "2", "--mem", "2048", "--storage", "8",
-		"--", "--offline", "--list-models")
+	run("images", "build", agent+"-smoke", "--agent", agent,
+		"--agent-version", version, "--base-image", "node:24-bookworm-slim",
+		"--cpus", "2", "--mem", "2048", "--storage", "8", "--set-default")
+	for _, args := range [][]string{
+		{"--agent", agent, "--profile", "smoke", "--", "--version"},
+		{"--", "--version"},
+	} {
+		if output := run(args...); !strings.Contains(output, version) {
+			t.Fatalf("unexpected %s version (args %q): %s", agent, args, output)
+		}
+	}
+	return data, run
+}
+
+func TestRealVM(t *testing.T) {
+	data, run := realVMSmoke(t, "pi", "1.4.0")
+	run("--", "--offline", "--list-models")
 	auth, err := os.ReadFile(filepath.Join(data, "profiles", "smoke", "pi", ".pi", "agent", "auth.json"))
 	if err != nil {
 		t.Fatalf("Pi did not create auth.json: %v", err)
@@ -110,8 +128,5 @@ func TestRealVM(t *testing.T) {
 	var credentials map[string]any
 	if err := json.Unmarshal(auth, &credentials); err != nil || credentials == nil || len(credentials) != 0 {
 		t.Fatalf("expected a new, empty credential store; parse error: %v", err)
-	}
-	if output := run("--", "--version"); !strings.Contains(output, "1.4.0") {
-		t.Fatalf("unexpected Pi version: %s", output)
 	}
 }
