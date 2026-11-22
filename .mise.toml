@@ -5,6 +5,16 @@ node = "24.22.1"
 [tasks.fmt]
 run = "gofmt -w cmd internal test"
 
+[tasks."fmt:check"]
+run = '''
+set -eu
+unformatted="$(gofmt -l cmd internal test)"
+if [ -n "$unformatted" ]; then
+  printf 'Run mise run fmt to format these files:\n%s\n' "$unformatted" >&2
+  exit 1
+fi
+'''
+
 [tasks.build]
 run = "go build -o bin/nook ./cmd/nook"
 
@@ -24,4 +34,4 @@ run = "AGENTNOOK_VM_SMOKE=1 go test -count=1 -run '^TestReal(VM|OpenCodeVM|Claud
 run = "go vet ./..."
 
 [tasks.check]
-depends = ["test", "test:e2e", "vet", "build"]
+depends = ["fmt:check", "test", "test:e2e", "vet", "build"]

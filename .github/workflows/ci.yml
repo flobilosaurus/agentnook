@@ -1,0 +1,175 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    name: Check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install Go and Node
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Check formatting, tests, vet and build
+        run: mise run check
+
+  vm:
+    name: Real VM tests (Linux AMD64)
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      SMOLVM_VERSION: "1.33.0"
+      SMOLVM_SHA256: 97e0c64d50abc407499802daa6c849ac010ef29d44e1d97664d8a78067927274
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Enable and check KVM
+        run: |
+          test "$(uname -s)" = Linux
+          test "$(uname -m)" = x86_64
+          if [[ ! -c /dev/kvm ]]; then
+            echo "::error::KVM is unavailable on this runner; real VM tests cannot run."
+            exit 1
+          fi
+          # Grant only the current runner user access to this disposable device.
+          sudo chown "$(id -u):$(id -g)" /dev/kvm
+          sudo chmod u+rw /dev/kvm
+          python3 - <<'PY'
+          import fcntl
+          import os
+
+          kvm = os.open("/dev/kvm", os.O_RDWR | os.O_CLOEXEC)
+          try:
+              vm = fcntl.ioctl(kvm, 0xAE01, 0)  # KVM_CREATE_VM
+              os.close(vm)
+          finally:
+              os.close(kvm)
+          PY
+
+      - name: Install Go
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          install_args: go
+
+      - name: Install verified smolvm bundle
+        run: |
+          bundle="$(mktemp -d "$RUNNER_TEMP/smolvm.XXXXXX")"
+          echo "SMOLVM_CI_BUNDLE=$bundle" >> "$GITHUB_ENV"
+          archive="smolvm-${SMOLVM_VERSION}-linux-x86_64.tar.gz"
+          curl --fail --location --retry 3 \
+            "https://github.com/smol-machines/smolvm/releases/download/v${SMOLVM_VERSION}/$archive" \
+            --output "$bundle/$archive"
+          printf '%s  %s\n' "$SMOLVM_SHA256" "$bundle/$archive" | sha256sum --check --strict -
+          tar -xzf "$bundle/$archive" -C "$bundle"
+          # Keep libraries, guest rootfs and disk templates beside the wrapper.
+          install_dir="$bundle/smolvm-${SMOLVM_VERSION}-linux-x86_64"
+          test "$("$install_dir/smolvm" --version)" = "smolvm $SMOLVM_VERSION"
+          echo "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Test real Pi, OpenCode and Claude VMs
+        env:
+          AGENTNOOK_HERDR: "0"
+        run: mise run test:vm
+
+      - name: Remove job-local smolvm bundle
+        if: always()
+        run: |
+          if [[ -n "${SMOLVM_CI_BUNDLE:-}" ]]; then
+            rm -rf -- "$SMOLVM_CI_BUNDLE"
+          fi
+
+  release:
+    name: Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [check, vm]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      CGO_ENABLED: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install Go
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          install_args: go
+
+      - name: Validate version tag
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Expected a version tag such as v1.2.3 or v1.2.3-rc.1" >&2
+            exit 1
+          fi
+
+      - name: Build release archives
+        run: |
+          mkdir -p dist
+          for target in darwin/arm64 linux/amd64 linux/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            name="nook_${TAG}_${os}_${arch}"
+            mkdir -p "dist/$name"
+            GOOS="$os" GOARCH="$arch" go build \
+              -trimpath \
+              -ldflags "-s -w -X github.com/flobilosaurus/agentnook/internal/cli.Version=$TAG" \
+              -o "dist/$name/nook" ./cmd/nook
+            cp README.md THIRD_PARTY_NOTICES.md "dist/$name/"
+            tar -czf "dist/$name.tar.gz" -C "dist/$name" \
+              nook README.md THIRD_PARTY_NOTICES.md
+          done
+          (cd dist && sha256sum ./*.tar.gz > checksums.txt)
+
+      - name: Smoke-test Linux binary
+        run: |
+          output="$("dist/nook_${TAG}_linux_amd64/nook" --version)"
+          test "$output" = "nook $TAG"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          args=(--verify-tag --generate-notes --title "$TAG")
+          if [[ "${TAG%%+*}" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$TAG" "${args[@]}" dist/*.tar.gz dist/checksums.txt
