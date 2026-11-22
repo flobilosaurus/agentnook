@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>agentnook — Logo</title>
+  <style>
+    :root { --ink:#172e38; --muted:#627077; --paper:#f7f6f2; --line:#dedfd9; --blue:#4d9abf; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:system-ui,sans-serif; }
+    main { max-width:1240px; margin:auto; padding:36px 40px 48px; }
+    header, footer { display:flex; justify-content:space-between; gap:24px; }
+    header { align-items:center; border-bottom:1px solid var(--line); padding-bottom:22px; }
+    .brand { font-family:ui-monospace,monospace; font-size:23px; font-weight:750; letter-spacing:-1.5px; }
+    .brand span { color:var(--blue); }
+    .eyebrow { font:11px ui-monospace,monospace; letter-spacing:.13em; text-transform:uppercase; }
+    .intro { padding:48px 0 28px; }
+    h1 { margin:12px 0 20px; font-size:clamp(36px,5vw,62px); line-height:1.06; letter-spacing:-.06em; }
+    p { max-width:680px; color:var(--muted); line-height:1.7; }
+    .art { min-height:310px; border:1px solid var(--line); border-radius:18px; display:flex; align-items:center; justify-content:center; background:white; }
+    .art img { width:240px; max-width:85%; }
+    .caption { padding-top:20px; }
+    h2 { font-size:23px; margin:0 0 8px; }
+    .links { display:flex; flex-wrap:wrap; gap:20px; margin-top:17px; }
+    a { color:var(--ink); text-underline-offset:4px; }
+    a:hover { color:#28789d; }
+    a:focus-visible { outline:3px solid var(--blue); outline-offset:5px; }
+    .applications { margin-top:40px; border-top:1px solid var(--line); padding-top:24px; }
+    .samples { display:grid; grid-template-columns:1fr 1fr 1.3fr; gap:16px; margin-top:20px; }
+    .sample { min-height:142px; border:1px solid var(--line); border-radius:14px; display:flex; align-items:center; justify-content:center; gap:14px; background:white; padding:20px; }
+    .sample.dark { background:var(--ink); color:#fffdf7; border-color:var(--ink); }
+    .sample img { width:84px; height:84px; }
+    .sample.scale { gap:18px; background:#eeece5; }
+    .size { display:flex; flex-direction:column; align-items:center; gap:8px; font:10px ui-monospace,monospace; color:var(--muted); }
+    footer { margin-top:32px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; line-height:1.7; }
+    @media(max-width:800px) {
+      main { padding:24px 20px 32px; }
+      .samples { grid-template-columns:1fr 1fr; }
+      .sample.scale { grid-column:1/-1; }
+      footer { flex-direction:column; gap:8px; }
+    }
+    @media(max-width:420px) { .samples { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand">agent<span>nook</span></div>
+      <div class="eyebrow">Projektlogo</div>
+    </header>
+    <section class="intro" aria-labelledby="heading">
+      <div class="eyebrow">Ein Agent. Sein eigener Platz.</div>
+      <h1 id="heading">Eine eigene Ecke.</h1>
+      <p>Ein kleines Quadrat in einer gepunkteten Ecke. Basis: Tabler Icons, MIT-lizenziert.</p>
+    </section>
+    <section aria-labelledby="logo-title">
+      <div class="art">
+        <img src="agentnook.svg" alt="Ein kleines blaues Quadrat unten links in einer gepunkteten Begrenzung.">
+      </div>
+      <div class="caption">
+        <h2 id="logo-title">Platz in der Ecke</h2>
+        <p>Ein Agent in seiner eigenen Nische. Tabler box-align-bottom-left (filled), unveränderte Geometrie, Blau (#4d9abf) auf transparentem Hintergrund. <a href="LICENSE-tabler.txt">MIT-Lizenz</a>.</p>
+        <div class="links"><a href="agentnook.svg" target="_blank" rel="noopener">SVG ansehen ↗</a><a href="agentnook.svg" download>SVG herunterladen ↓</a></div>
+      </div>
+    </section>
+    <section class="applications" aria-labelledby="applications-title">
+      <h2 id="applications-title">Logo im Einsatz</h2>
+      <p>Hell / Dunkel / Größenprobe</p>
+      <div class="samples">
+        <div class="sample"><img src="agentnook.svg" alt=""><span class="brand">agent<span>nook</span></span></div>
+        <div class="sample dark"><img src="agentnook.svg" alt=""><span class="brand">agent<span>nook</span></span></div>
+        <div class="sample scale">
+          <div class="size"><img src="agentnook.svg" alt="Icon bei 32 Pixeln" style="width:32px;height:32px"><span>32 px</span></div>
+          <div class="size"><img src="agentnook.svg" alt="Icon bei 64 Pixeln" style="width:64px;height:64px"><span>64 px</span></div>
+          <div class="size"><img src="agentnook.svg" alt="Icon bei 96 Pixeln" style="width:96px;height:96px"><span>96 px</span></div>
+        </div>
+      </div>
+    </section>
+    <footer>
+      <span>Tabler Icons (MIT) · SVG · transparenter Hintergrund · keine externen Abhängigkeiten</span>
+      <a href="README.md">Dateien &amp; Quellen</a>
+    </footer>
+  </main>
+</body>
+</html>

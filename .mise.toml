@@ -1,0 +1,27 @@
+[tools]
+go = "1.27.4"
+node = "24.22.1"
+
+[tasks.fmt]
+run = "gofmt -w cmd internal test"
+
+[tasks.build]
+run = "go build -o bin/nook ./cmd/nook"
+
+[tasks.test]
+run = "go test -race ./internal/..."
+
+[tasks."test:architecture"]
+run = "go test -count=1 ./internal/architecture"
+
+[tasks."test:e2e"]
+run = "go test -count=1 ./test/e2e/..."
+
+[tasks."test:vm"]
+run = "AGENTNOOK_VM_SMOKE=1 go test -count=1 -run '^TestReal(VM|OpenCodeVM)$' -timeout 25m -v ./test/e2e/..."
+
+[tasks.vet]
+run = "go vet ./..."
+
+[tasks.check]
+depends = ["test", "test:e2e", "vet", "build"]

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nook watch · TUI-Prototyp A</title>
+<style>
+:root{color-scheme:dark;--bg:#101116;--surface:#171920;--line:#303441;--text:#e3e5ee;--muted:#a1a8ba;--purple:#b6a0ff;--cyan:#78d6ef;--green:#98d6ab;--yellow:#eed18a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}main{max-width:1160px;margin:42px auto;padding:0 24px}h1{font:600 18px/1.5 system-ui;margin:0}p{margin:6px 0 18px;color:var(--muted)}button{font:inherit;color:inherit;cursor:pointer;background:transparent;border:1px solid var(--line);border-radius:5px;padding:5px 11px}button:hover{border-color:var(--purple)}button:focus-visible,tr:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}button[aria-pressed=true]{color:var(--purple);border-color:var(--purple);background:#b6a0ff0c}.controls{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:20px}.controls span{color:var(--muted);margin-right:6px}.terminal{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 18px 80px #0003}.chrome{display:flex;justify-content:space-between;gap:12px;padding:9px 18px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}.screen{padding:22px 24px;min-height:570px}.brand{color:var(--purple);font-weight:700}.path{color:var(--muted);overflow-wrap:anywhere}.summary{margin-top:7px;color:var(--muted)}.green{color:var(--green)}.yellow{color:var(--yellow)}.muted{color:var(--muted)}.cyan{color:var(--cyan)}.scroll{overflow:auto;margin-top:22px}table{width:100%;border-collapse:collapse;white-space:nowrap}th{text-align:left;font-weight:400;color:var(--muted);font-size:12px;padding:6px 12px}td{padding:8px 12px}th:first-child,td:first-child{padding-left:8px}tbody tr{cursor:pointer}tbody tr:hover{background:#ffffff04}.active{background:#78d6ef10!important;color:var(--cyan)}.number{text-align:right}.instance{white-space:nowrap}.marker{display:inline-block;width:20px}.detail-heading{display:flex;gap:16px;align-items:center;margin-top:25px;border-bottom:1px solid var(--line);padding-bottom:8px}.section-title{margin:0;color:var(--cyan);font:inherit;font-weight:600}.mounts-heading{margin-top:24px;margin-bottom:12px}.detail-id{margin-left:auto;color:var(--muted);font-size:12px}.detail{padding:19px 0;min-height:225px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:9px 30px}.field{display:grid;grid-template-columns:100px 1fr;gap:8px}.label{color:var(--muted)}.value{overflow-wrap:anywhere}.note{font-size:12px;color:var(--muted);margin-top:18px}.warning{color:var(--yellow);border-left:2px solid var(--yellow);padding-left:12px;margin:18px 0 0}.mount{display:grid;grid-template-columns:minmax(0,1fr) 22px minmax(140px,.65fr) 30px;gap:9px;padding:7px 0}.mount>*{overflow-wrap:anywhere}.mount-head{color:var(--muted);font-size:12px;padding-top:0}.help{color:var(--muted);border-top:1px solid var(--line);padding-top:12px;font-size:12px}.help b{color:var(--text);font-weight:400}.empty{padding:70px 10px 105px;text-align:center}.empty strong{display:block;font-size:16px;margin-bottom:12px}.empty p{margin:4px}.empty code{color:var(--cyan)}.below{font:13px/1.6 system-ui;margin-top:17px;max-width:850px}kbd{font:inherit;color:var(--text)}[hidden]{display:none!important}@media(max-width:700px){main{margin:20px auto;padding:0 12px}.screen{padding:16px 12px}.fields{grid-template-columns:1fr}.detail-heading{flex-wrap:wrap}.detail-id{margin-left:0}.mount{grid-template-columns:minmax(0,1fr) 18px minmax(100px,.8fr) 25px;font-size:12px}.chrome{padding:9px 12px}.screen{min-height:620px}}
+</style>
+</head>
+<body>
+<main>
+<h1>Fleet view · Prototyp A</h1>
+<p>Tabelle + alle Details darunter, ohne Tabs. Alle Instanzen und Werte sind erfunden. Kein Zugriff auf laufende VMs.</p>
+<div class="controls" aria-label="Beispielzustand">
+<span>Szenario</span>
+<button type="button" data-scenario="normal" aria-pressed="true">Laufende Instanzen</button>
+<button type="button" data-scenario="stale" aria-pressed="false">Heartbeat fehlt</button>
+<button type="button" data-scenario="empty" aria-pressed="false">Keine Instanzen</button>
+</div>
+<section class="terminal" aria-label="Terminal-Prototyp">
+<div class="chrome"><span>~/code/agentnook $ nook watch</span><span>MOCK · READ ONLY</span></div>
+<div class="screen">
+<header><span class="brand">agentnook fleet</span><span class="path"> · ~/code/agentnook</span></header>
+<div id="summary" class="summary"></div>
+<div id="populated">
+<div class="scroll">
+<table aria-label="Instanzen im aktuellen Ordner">
+<thead><tr><th>INSTANCE</th><th>PROFILE</th><th>STATUS</th><th class="number">vCPU</th><th class="number">RAM</th><th>PI</th><th class="number">UPTIME</th></tr></thead>
+<tbody id="rows"></tbody>
+</table>
+</div>
+<div class="detail-heading">
+<h2 id="machine-heading" class="section-title">Machine</h2>
+<span id="detail-id" class="detail-id"></span>
+</div>
+<section id="detail" class="detail" aria-labelledby="machine-heading"></section>
+</div>
+<div id="empty" class="empty" hidden>
+<strong>Keine laufenden Instanzen für diesen Ordner.</strong>
+<p>In anderem Terminal hier <code>nook</code> starten.</p>
+<p>Watch bleibt offen und wartet auf neue Instanzen.</p>
+<p class="note">Andere Arbeitsordner und Unterordner sind nicht Teil dieser Ansicht.</p>
+</div>
+<footer class="help"><b>↑↓ / j k</b> Auswahl &nbsp; <b>q</b> Watch beenden</footer>
+</div>
+</section>
+<p class="below">CPU/RAM = beim Start zugewiesen, nicht Live-Auslastung. Pi-Version = Image-Metadatum, nicht erneut im Gast geprüft. <span class="yellow">unknown</span> = kein frischer Pi-Status; VM nicht automatisch beendet. Ressourcen hier aus Startdaten, nicht aus später veränderter Projektkonfiguration.</p>
+<p class="below" id="feedback">Bedienbar per Klick und Tastatur. <kbd>q</kbd> zeigt nur simuliertes Watch-Ende; keine VM wird gesteuert.</p>
+</main>
+<script>
+'use strict';
+const instances = [
+  {id:'a7f21c',profile:'privat',state:'working',cpus:2,ram:'2 GiB',pi:'1.4.0',uptime:'12m',image:'dev-v1',base:'node:24-bookworm',started:'14:32:08',heartbeat:'vor 1s',storage:'8 GiB',extra:true},
+  {id:'b831de',profile:'privat',state:'idle',cpus:4,ram:'4 GiB',pi:'1.4.0',uptime:'38m',image:'dev-v1',base:'node:24-bookworm',started:'14:06:08',heartbeat:'vor 1s',storage:'8 GiB',extra:false},
+  {id:'c9d402',profile:'arbeit',state:'unknown',cpus:2,ram:'2 GiB',pi:'1.3.9',uptime:'3m',image:'stable-v2',base:'node:24-bookworm',started:'14:41:08',heartbeat:'vor 18s',storage:'8 GiB',extra:false}
+];
+let scenario = 'normal';
+let selected = 0;
+let ended = false;
+const byId = id => document.getElementById(id);
+const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const currentInstances = () => scenario === 'empty' ? [] : instances.map(item => scenario === 'stale' ? {...item,state:'unknown',heartbeat:'vor 18s'} : item);
+function field(label,value) { return `<div class="field"><span class="label">${escapeHTML(label)}</span><span class="value">${escapeHTML(value)}</span></div>`; }
+function render() {
+  const data = currentInstances();
+  const counts = data.reduce((all,item) => { all[item.state] = (all[item.state] || 0) + 1; return all; },{});
+  byId('summary').innerHTML = ended ? 'Watch beendet · VMs laufen unverändert weiter.' : `${data.length} Instanzen${Object.entries(counts).map(([state,count]) => ` · <span class="${state === 'unknown' ? 'yellow' : state === 'working' ? 'green' : ''}">${count} ${state}</span>`).join('')} <span class="muted">· Aktualisierung 1s (simuliert)</span>`;
+  byId('populated').hidden = !data.length || ended;
+  byId('empty').hidden = !!data.length || ended;
+  document.querySelectorAll('[data-scenario]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.scenario === scenario)));
+  if (ended || !data.length) return;
+  selected = Math.max(0,Math.min(selected,data.length - 1));
+  byId('rows').innerHTML = data.map((item,index) => `<tr data-index="${index}" class="${index === selected ? 'active' : ''}" tabindex="${index === selected ? '0' : '-1'}" aria-label="${escapeHTML(item.id + ', ' + item.state + (index === selected ? ', ausgewählt' : ''))}"><td class="instance"><span class="marker">${index === selected ? '▸' : ' '}</span>${item.id}</td><td>${item.profile}</td><td class="${item.state === 'unknown' ? 'yellow' : item.state === 'working' ? 'green' : 'muted'}">${item.state}</td><td class="number">${item.cpus}</td><td class="number">${item.ram}</td><td>${item.pi}</td><td class="number">${item.uptime}</td></tr>`).join('');
+  const item = data[selected];
+  byId('detail-id').textContent = item.id + ' · ' + item.profile;
+  const mounts = [
+    ['~/code/agentnook','/workspace','rw'],
+    ['~/.agentnook/profiles/' + item.profile + '/.pi','/root/.pi','rw'],
+    ...(item.extra ? [['~/code/lib','/mnt/lib','ro']] : []),
+    ['/tmp/agentnook-herdr-' + item.id,'/run/agentnook-herdr','rw']
+  ];
+  const machineDetails = '<div class="fields">' + [field('Image',item.image),field('Linux base',item.base),field('CPU',item.cpus + ' vCPU'),field('RAM',item.ram),field('Pi',item.pi + ' (Image)'),field('Storage',item.storage + ' (Startwert)'),field('Started',item.started + ' · heute'),field('Pi report',item.heartbeat)].join('') + '</div>';
+  const statusWarning = item.state === 'unknown' ? '<div class="warning">Kein frischer Pi-Heartbeat seit mehr als 5s. Aktivität unbekannt; kein Nachweis für beendete VM.</div>' : '';
+  const mountDetails = '<section aria-labelledby="mounts-heading"><h3 id="mounts-heading" class="section-title mounts-heading">Mounts · ' + mounts.length + '</h3><div class="mount mount-head"><span>HOST</span><span></span><span>GUEST</span><span>MODE</span></div>' + mounts.map(([host,guest,mode]) => `<div class="mount"><span>${escapeHTML(host)}</span><span class="muted">→</span><span>${escapeHTML(guest)}</span><span class="${mode === 'ro' ? 'green' : 'muted'}">${mode}</span></div>`).join('') + '</section>';
+  byId('detail').innerHTML = machineDetails + statusWarning + mountDetails + '<div class="note">Startwerte dieser Instanz · keine gemessene CPU-/RAM-Auslastung.<br>Projekt- und Profil-Mount immer sichtbar. Temporärer Herdr-Mount nur bei aktiver Bridge.<br>Hostpfade hier verkürzt; echte Ansicht muss vollständige Pfade zugänglich machen.</div>';
+}
+document.querySelectorAll('[data-scenario]').forEach(button => button.addEventListener('click',() => {
+  scenario = button.dataset.scenario; selected = 0; ended = false;
+  byId('feedback').textContent = 'Bedienbar per Klick und Tastatur. q beendet nur diese Simulation.';
+  render();
+}));
+byId('rows').addEventListener('click',event => {
+  const row = event.target.closest('[data-index]');
+  if (row) { selected = Number(row.dataset.index); render(); byId('rows').querySelector('.active').focus(); }
+});
+document.addEventListener('keydown',event => {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.key === 'q') {
+    ended = true;
+    byId('feedback').textContent = 'Simulation beendet. Szenario-Button startet Prototyp erneut. Keine VM gestoppt.';
+    render(); return;
+  }
+  if (ended || !currentInstances().length) return;
+  if (['ArrowDown','j','ArrowUp','k'].includes(event.key)) {
+    event.preventDefault();
+    selected = Math.max(0,Math.min(selected + (['ArrowDown','j'].includes(event.key) ? 1 : -1),currentInstances().length - 1));
+    render(); byId('rows').querySelector('.active').focus();
+  }
+});
+render();
+</script>
+</body>
+</html>
