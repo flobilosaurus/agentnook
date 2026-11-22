@@ -6,7 +6,51 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/flobilosaurus/agentnook/internal/agents"
 )
+
+func TestAgentVersionCheck(t *testing.T) {
+	for _, tc := range []struct {
+		name, agent, version, actual, versionExit, want string
+	}{
+		{name: "pi", agent: "pi", version: "1.4.0", actual: "1.4.0", versionExit: "0"},
+		{name: "claude", agent: "claude", version: "2.1.99", actual: "2.1.99 (Claude Code)", versionExit: "0"},
+		{name: "opencode", agent: "opencode", version: "2.3.2", actual: "opencode v2.3.2", versionExit: "0"},
+		{name: "opencode bare version", agent: "opencode", version: "2.3.2", actual: "2.3.2", versionExit: "0"},
+		{name: "wrong prefixed version", agent: "opencode", version: "2.3.2", actual: "opencode v2.3.1", versionExit: "0", want: "version mismatch: expected 2.3.2, got 2.3.1"},
+		{name: "version substring", agent: "opencode", version: "2.3.2", actual: "opencode v2.3.20", versionExit: "0", want: "version mismatch: expected 2.3.2, got 2.3.20"},
+		{name: "other agent prefix", agent: "opencode", version: "2.3.2", actual: "other v2.3.2", versionExit: "0", want: "version mismatch"},
+		{name: "empty output", agent: "opencode", version: "2.3.2", versionExit: "0", want: "version mismatch"},
+		{name: "binary failure", agent: "opencode", version: "2.3.2", actual: "opencode v2.3.2", versionExit: "1", want: "agent installation is incomplete"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter, err := All().Lookup(tc.agent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := t.TempDir()
+			for name, script := range map[string]string{
+				"mkdir":  "exit 0\n",
+				tc.agent: "printf '%s\\n' \"$TEST_ACTUAL_VERSION\"\nexit \"$TEST_VERSION_EXIT\"\n",
+			} {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+script), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cmd := exec.Command("/bin/sh", "-eu", "-c", agents.VersionCheck(adapter.Spec()))
+			cmd.Env = []string{"PATH=" + dir, "AGENT_VERSION=" + tc.version, "TEST_ACTUAL_VERSION=" + tc.actual, "TEST_VERSION_EXIT=" + tc.versionExit}
+			output, err := cmd.CombinedOutput()
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("version check: %v\n%s", err, output)
+				}
+			} else if err == nil || !strings.Contains(string(output), tc.want) {
+				t.Fatalf("want %q failure, got %v\n%s", tc.want, err, output)
+			}
+		})
+	}
+}
 
 func TestOpenCodeInstallRunsOnlyApprovedPostinstallAndChecksVersion(t *testing.T) {
 	adapter, err := All().Lookup("opencode")
@@ -18,6 +62,9 @@ func TestOpenCodeInstallRunsOnlyApprovedPostinstallAndChecksVersion(t *testing.T
 		blockPostinstall                bool
 	}{
 		{name: "approved postinstall", actual: "2.3.2", versionExit: "0"},
+		{name: "prefixed version", actual: "opencode v2.3.2", versionExit: "0"},
+		{name: "wrong prefixed version", actual: "opencode v2.3.1", versionExit: "0", want: "version mismatch: expected 2.3.2, got 2.3.1"},
+		{name: "binary failure with prefixed output", actual: "opencode v2.3.2", versionExit: "1", want: "agent installation is incomplete"},
 		{name: "blocked postinstall", actual: "2.3.2", versionExit: "0", blockPostinstall: true, want: "agent installation is incomplete"},
 		{name: "wrong version", actual: "2.3.1", versionExit: "0", want: "version mismatch: expected 2.3.2, got 2.3.1"},
 		{name: "binary failure with version output", actual: "2.3.2", versionExit: "1", want: "agent installation is incomplete"},

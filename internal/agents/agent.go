@@ -147,6 +147,9 @@ func versionCheck(spec Spec) string {
   printf '%s\n' 'nook: ` + spec.Name + ` --version failed; agent installation is incomplete' >&2
   exit 1
 fi
+# Accept both bare versions and '<agent> v<version>' output.
+actual_version="${actual_version#` + spec.Name + ` }"
+actual_version="${actual_version#v}"
 actual_version="${actual_version%% *}"
 if [ "$actual_version" != "$AGENT_VERSION" ]; then
   printf 'nook: ` + spec.Name + ` version mismatch: expected %s, got %s\n' "$AGENT_VERSION" "$actual_version" >&2
