@@ -31,6 +31,8 @@ const maxOutput = 4 << 20
 // AgentVersion and BaseImage are catalog metadata, not observations inside the VM.
 type Instance struct {
 	Name, State, Profile, Image string
+	Project                     string // Exact workspace mount; never replaced by Git grouping.
+	Workspace                   Workspace
 	ImageName, BaseImage        string
 	Agent, AgentVersion         string
 	CPUs, MemoryMiB             int
@@ -48,12 +50,12 @@ type Snapshot struct {
 }
 
 type Source struct {
-	Agents  agents.Catalog
-	Binary  string
-	Project string // Canonical, exact working directory; never a Git root.
-	Paths   paths.Paths
-	readers map[string]*telemetry.Reader
-	mu      sync.Mutex // Discovery can still be unwinding when watch exits.
+	Agents     agents.Catalog
+	Binary     string
+	Paths      paths.Paths
+	readers    map[string]*telemetry.Reader
+	workspaces map[string]workspaceObservation
+	mu         sync.Mutex // Discovery can still be unwinding when watch exits.
 }
 
 // Load uses two public CLI views because smolvm 1.33's JSON only includes a
@@ -94,10 +96,12 @@ func (s *Source) Load(ctx context.Context) (Snapshot, error) {
 		if !found { // Exited between JSON and verbose snapshots.
 			continue
 		}
-		profile, agent, workspace := "", "", false
+		profile, agent, project := "", "", ""
+		workspaces := 0
 		for _, mount := range shares {
-			if mount.Guest == "/workspace" && mount.Host == s.Project {
-				workspace = true
+			if mount.Guest == "/workspace" {
+				project = mount.Host
+				workspaces++
 			}
 			if mount.Guest == "/root" {
 				name, kind := filepath.Base(filepath.Dir(mount.Host)), filepath.Base(mount.Host)
@@ -107,8 +111,8 @@ func (s *Source) Load(ctx context.Context) (Snapshot, error) {
 				}
 			}
 		}
-		if !workspace || profile == "" {
-			continue // Not an agentnook instance of this exact folder/data home.
+		if workspaces != 1 || profile == "" {
+			continue // Not an unambiguous agentnook instance of this scope/data home.
 		}
 		if len(shares) != machine.MountCount {
 			return Snapshot{}, errors.New("smolvm mount count changed or verbose format is unsupported; retrying")
@@ -122,7 +126,7 @@ func (s *Source) Load(ctx context.Context) (Snapshot, error) {
 			image = artifact
 		}
 		result.Instances = append(result.Instances, Instance{
-			Name: machine.Name, State: machine.State, Profile: profile, Image: image, Agent: agent,
+			Name: machine.Name, State: machine.State, Profile: profile, Image: image, Agent: agent, Project: project,
 			CPUs: machine.CPUs, MemoryMiB: machine.MemoryMiB, PID: machine.PID,
 			StorageGiB: machine.StorageGiB, CreatedAt: created, Ephemeral: machine.Ephemeral || machine.Labels["agentnook.ephemeral"] == "true", Mounts: shares,
 			Activity: s.activitySample(machine.Name, shares, usedReaders),
@@ -137,6 +141,7 @@ func (s *Source) Load(ctx context.Context) (Snapshot, error) {
 	if len(result.Instances) == 0 {
 		return result, nil
 	}
+	s.observeWorkspaces(ctx, result.Instances)
 	cfg, err := config.Load(s.Paths.ConfigFile())
 	if err != nil {
 		result.Warning = "Image catalog unavailable; image metadata is unknown."
@@ -303,7 +308,12 @@ func (b *limitedBuffer) Write(data []byte) (int, error) {
 }
 
 func command(ctx context.Context, binary string, args ...string) ([]byte, error) {
+	return commandEnv(ctx, binary, nil, args...)
+}
+
+func commandEnv(ctx context.Context, binary string, env []string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = 200 * time.Millisecond
@@ -314,7 +324,7 @@ func command(ctx context.Context, binary string, args ...string) ([]byte, error)
 		if ctx.Err() != nil {
 			err = ctx.Err()
 		}
-		return nil, fmt.Errorf("smolvm %s: %w", strings.Join(args, " "), err)
+		return nil, fmt.Errorf("%s %s: %w", filepath.Base(binary), strings.Join(args, " "), err)
 	}
 	return out.Bytes(), nil
 }

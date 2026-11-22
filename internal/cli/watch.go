@@ -3,10 +3,8 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 
-	"github.com/flobilosaurus/agentnook/internal/config"
 	"github.com/flobilosaurus/agentnook/internal/fleet"
 	"github.com/flobilosaurus/agentnook/internal/paths"
 	"github.com/flobilosaurus/agentnook/internal/tui"
@@ -14,35 +12,42 @@ import (
 
 const watchUsage = `Usage: nook watch
 
-Watch running agentnook instances of this exact host directory and AGENTNOOK_HOME.
+Watch running agentnook instances across all projects in the current AGENTNOOK_HOME.
+The current directory does not restrict discovery; other data homes stay excluded.
+Always-open navigator: profile > project > worktree > VM.
+Only VM rows are selectable; profile, project and worktree headings are skipped.
+The inspector follows the selected VM and lists VMs in its exact workspace/profile.
+Wide terminals show navigator left and inspector right; narrow terminals stack them.
+Git grouping is optional and read-only; unavailable metadata falls back to folders.
 Uses smolvm machine ls --json and --verbose; refreshes after each poll (1s).
 Shows VM status, resource limits, image metadata and all mounts without tabs.
 Shows agent activity, runtime uptime and heartbeat from shared guest telemetry.
 Missing or stale agent telemetry remains unknown; VM status stays separate.
 
-Keys: up/down or j/k select; PgUp/PgDn or Ctrl+U/Ctrl+D scroll details;
-      Home/End jump within details; q, Esc or Ctrl+C exit watch only.
+Keys: up/down or j/k select VMs across the tree, skipping all group headings.
+      Tab/Shift+Tab switch navigator/instances without changing VM selection.
+      Left/h focuses navigator; Right/l focuses instances. No collapsing.
+      PgUp/PgDn or Ctrl+U/Ctrl+D scroll details; Home/End jump within details.
+      q, Esc or Ctrl+C exit watch only.
 Requires terminal input and output. Never starts or explicitly stops a VM.
 `
 
 func (a App) watchCommand(args []string) int {
-	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+	help := false
+	for _, arg := range args {
+		switch arg {
+		case "--help", "-h":
+			help = true
+		default:
+			return a.fail(2, errors.New("watch accepts no launch options or agent arguments; use nook watch --help"))
+		}
+	}
+	if help {
 		fmt.Fprint(a.Out, watchUsage)
 		return 0
 	}
-	if len(args) != 0 {
-		return a.fail(2, errors.New("watch accepts no launch options or agent arguments; use nook watch --help"))
-	}
 	if !a.Interactive() {
 		return a.fail(1, errors.New("watch needs terminal input and output"))
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return a.fail(1, err)
-	}
-	project, err := config.NormalizeProjectPath(cwd)
-	if err != nil {
-		return a.fail(1, err)
 	}
 	p, err := paths.Resolve()
 	if err != nil {
@@ -52,15 +57,16 @@ func (a App) watchCommand(args []string) int {
 	if err != nil {
 		return a.fail(127, errors.New("smolvm not found on PATH"))
 	}
-	source := fleet.Source{Binary: binary, Project: project, Paths: p, Agents: a.Agents}
+	source := fleet.Source{Binary: binary, Paths: p, Agents: a.Agents}
+	scope := "All projects · AGENTNOOK_HOME: " + p.Root
 	defer source.Close()
 	watch := a.Watch
 	if watch == nil {
-		watch = func(project string, load tui.FleetLoader) error {
-			return tui.WatchFleet(project, load, a.In, a.Out)
+		watch = func(scope string, load tui.FleetLoader) error {
+			return tui.WatchFleet(scope, load, a.In, a.Out)
 		}
 	}
-	if err := watch(project, source.Load); err != nil {
+	if err := watch(scope, source.Load); err != nil {
 		return a.fail(1, fmt.Errorf("watch: %w", err))
 	}
 	return 0

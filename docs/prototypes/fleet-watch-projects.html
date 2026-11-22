@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nook watch · Projekte statt flacher Liste</title>
+<style>
+:root{color-scheme:light;--background:oklch(.97 .005 260);--foreground:oklch(.18 .02 260);--card:oklch(1 0 0);--primary:oklch(.50 .25 280);--muted:oklch(.92 .01 260);--muted-foreground:oklch(.40 .02 260);--border:oklch(.88 .01 260);--success:oklch(.45 .20 150);--warning:oklch(.55 .18 85);--font-sans:Inter,system-ui,-apple-system,sans-serif;--font-mono:"SFMono-Regular",Consolas,monospace;--font-display:Georgia,serif;--radius:10px;--term:#13171c;--ink:#e1e8ee;--dim:#9ba9b5;--line:#35424c;--cyan:#85d9cf;--yellow:#f0cf8c;--green:#a5d6a7;--red:#efada5}
+*{box-sizing:border-box}body{margin:0;background:var(--background);color:var(--foreground);font:15px/1.6 var(--font-sans)}main{max-width:1250px;margin:0 auto;padding:52px 26px 72px}h1,h2,h3,p{margin:0}h1{font:500 clamp(30px,4vw,46px)/1.15 var(--font-display);letter-spacing:-.035em;margin:10px 0 18px}h2{font:500 25px/1.3 var(--font-display)}h3{font-size:15px}.eyebrow{font:12px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground)}.intro{max-width:78ch;color:var(--muted-foreground)}.brief{border-left:3px solid var(--primary);padding:12px 18px;margin-top:23px;background:var(--card);max-width:850px}.brief p{font-size:14px}.options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:32px 0 24px}button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,.terminal:focus-visible{outline:2px solid var(--primary);outline-offset:4px}.option{color:var(--foreground);text-align:left;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);padding:18px}.option[aria-pressed=true]{border:2px solid var(--primary);padding:17px;background:color-mix(in oklab,var(--primary) 4%,var(--card))}.option strong{display:block;font-size:16px;margin:6px 0}.option small{display:block;color:var(--muted-foreground);line-height:1.5}.option .eyebrow{color:var(--primary)}.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 16px}.control-group{display:flex;gap:6px;align-items:center}.control-label{font:11px var(--font-mono);text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);margin-right:4px}.pill{border:1px solid var(--border);border-radius:5px;background:var(--card);color:var(--foreground);padding:5px 10px;font-size:12px}.pill[aria-pressed=true]{border-color:var(--primary);color:var(--primary)}.demo-wrap{overflow-x:auto;padding:4px}.terminal{background:var(--term);color:var(--ink);border:1px solid var(--line);border-radius:9px;font:12px/1.65 var(--font-mono);width:100%;min-width:360px;max-width:1160px;margin:0 auto;box-shadow:0 16px 45px #17212b16;--cols:68px}.terminal.narrow{max-width:720px;--cols:60px}.chrome{padding:10px 18px;border-bottom:1px solid var(--line);color:var(--dim);display:flex;justify-content:space-between;font-size:11px}.chrome span:last-child{color:var(--cyan)}.screen{padding:18px;position:relative}.brand{font-weight:600;color:var(--cyan);font-size:14px}.dim{color:var(--dim)}.screen-header{margin-bottom:16px}.global-summary{margin-top:7px;color:var(--dim)}.terminal button{border:0;border-radius:0;background:transparent;color:inherit;line-height:inherit}.terminal button:focus-visible,.terminal input:focus-visible{outline-color:var(--cyan);outline-offset:-2px}.terminal button:hover{background:#ffffff07}.list-region{max-height:320px;overflow:auto;scrollbar-color:var(--line) transparent}.group{margin:0 0 9px}.project-heading{width:100%;display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:6px;text-align:left;padding:8px 7px!important;border-top:1px solid var(--line)!important}.project-heading strong{color:var(--cyan);font-weight:500}.project-heading small{display:block;color:var(--dim);font:10px/1.6 var(--font-mono);overflow-wrap:anywhere}.project-heading .counts{font-size:10px;color:var(--dim);padding-top:2px}.selected{background:#85d9cf15!important;box-shadow:inset 2px 0 var(--cyan)}.columns,.instance-row{display:grid;grid-template-columns:minmax(115px,1.2fr) var(--cols) var(--cols) 100px 86px 68px;gap:8px;align-items:center;width:100%;text-align:left;padding:6px 8px}.columns{color:var(--dim);font-size:10px;padding-top:0}.instance-row{font:inherit;cursor:pointer}.instance-row .identity{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.instance-row .activity-working{color:var(--green)}.instance-row .activity-blocked,.instance-row .activity-unknown{color:var(--yellow)}.vm-unreachable,.vm-frozen{color:var(--red)}.tree-rows{padding-left:21px}.tree-rows .instance-row,.tree-rows .columns{grid-template-columns:minmax(115px,1.2fr) var(--cols) var(--cols) 100px 86px 68px}.details{border-top:1px solid var(--line);margin-top:18px;padding-top:13px;min-height:210px}.detail-title{color:var(--cyan);font-weight:500;margin-bottom:8px;overflow-wrap:anywhere}.fields{display:grid;grid-template-columns:105px minmax(0,1fr);gap:2px 12px}.fields dt{color:var(--dim)}.fields dd{margin:0;overflow-wrap:anywhere}.mounts{margin-top:11px;color:var(--dim);overflow-wrap:anywhere}.notice{margin-top:9px;color:var(--yellow);max-width:90ch}.help{border-top:1px solid var(--line);padding-top:10px;margin-top:14px;color:var(--dim);font-size:10px}.side-layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:18px}.sidebar{border-right:1px solid var(--line);padding-right:12px}.sidebar-title,.pane-title{font-size:10px;letter-spacing:.04em;color:var(--dim);margin-bottom:10px}.project-choice{display:block;width:100%;text-align:left;padding:9px!important;margin-bottom:3px}.project-choice strong{display:block;font-weight:500}.project-choice small{display:block;color:var(--dim);font:10px/1.7 var(--font-mono);overflow-wrap:anywhere}.project-choice .totals{color:var(--yellow)}.pane-title.focused,.sidebar-title.focused{color:var(--cyan)}.side-layout .instance-row,.side-layout .columns{grid-template-columns:minmax(115px,1fr) 70px 90px 76px}.side-layout .profile,.side-layout .uptime{display:none}.picker-bar{display:flex;gap:10px;align-items:center;padding:9px 12px!important;width:100%;border:1px solid var(--line)!important;text-align:left;margin-bottom:14px}.picker-bar strong{color:var(--cyan);font-weight:500}.picker-bar .hint{margin-left:auto;color:var(--dim);font-size:10px}.project-path{overflow-wrap:anywhere;color:var(--dim);font-size:10px;margin-bottom:10px}.empty{padding:75px 15px;text-align:center;color:var(--dim)}.empty strong{display:block;color:var(--ink);font-weight:500;font-size:14px;margin-bottom:8px}.picker-overlay{position:absolute;inset:10px;background:#13171cf5;border:1px solid var(--cyan);padding:18px;z-index:2;box-shadow:0 12px 35px #0008;overflow:auto}.picker-overlay h3{color:var(--cyan);font:14px var(--font-mono);margin-bottom:12px}.picker-overlay input{width:100%;background:#1c242c;border:1px solid var(--line);padding:9px;color:var(--ink);font:12px var(--font-mono);margin-bottom:12px}.picker-overlay .project-choice{border-bottom:1px solid var(--line)}.caption{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin:23px 4px 0}.caption p{font-size:14px;color:var(--muted-foreground);margin-top:5px}.badge{display:inline-block;font:10px var(--font-mono);text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;background:var(--muted);color:var(--primary);margin-bottom:8px}.rules{margin-top:46px;border-top:1px solid var(--border);padding-top:24px}.rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:18px}.rules p{font-size:13px;color:var(--muted-foreground);margin-top:5px}.comparison{margin-top:40px}.table-scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px;margin-top:15px}th,td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--border)}th{font:11px var(--font-mono);color:var(--muted-foreground)}td:first-child{font-weight:600}.footnote{color:var(--muted-foreground);font-size:12px;margin-top:24px}.terminal.narrow .profile,.terminal.narrow .uptime{display:none}.terminal.narrow .instance-row,.terminal.narrow .columns{grid-template-columns:minmax(115px,1fr) 70px 90px 80px}.terminal.narrow .side-layout{grid-template-columns:170px minmax(0,1fr);gap:12px}.terminal.narrow .side-layout .columns,.terminal.narrow .side-layout .instance-row{grid-template-columns:minmax(110px,1fr) 70px 76px}.terminal.narrow .side-layout .agent{display:none}.terminal.narrow .project-heading .counts{max-width:140px;text-align:right}.theme-toggle{margin-left:auto}body.dark{color-scheme:dark;--background:oklch(.18 .015 260);--foreground:oklch(.93 .01 260);--card:oklch(.22 .015 260);--primary:oklch(.78 .14 280);--muted:oklch(.27 .015 260);--muted-foreground:oklch(.75 .025 260);--border:oklch(.36 .015 260)}[hidden]{display:none!important}@media(max-width:850px){.options{grid-template-columns:1fr}.option{padding:12px 16px}.option[aria-pressed=true]{padding:11px 15px}.option strong{display:inline;margin-left:12px}.option small{margin-top:5px}.caption,.rules-grid{grid-template-columns:1fr;gap:15px}.terminal{--cols:60px}.terminal .profile,.terminal .uptime{display:none}.terminal .instance-row,.terminal .columns{grid-template-columns:minmax(115px,1fr) 70px 90px 80px}.tree-rows .instance-row,.tree-rows .columns{grid-template-columns:minmax(115px,1fr) 70px 90px 80px}.side-layout,.terminal.narrow .side-layout{grid-template-columns:155px minmax(0,1fr)}.side-layout .columns,.side-layout .instance-row{grid-template-columns:minmax(110px,1fr) 70px 76px}.side-layout .agent{display:none}.terminal .project-heading .counts{font-size:9px;max-width:140px}}@media(max-width:600px){main{padding:30px 12px 40px}.screen{padding:12px}.chrome{padding:8px 12px}.terminal .instance-row,.terminal .columns,.tree-rows .instance-row,.tree-rows .columns{grid-template-columns:minmax(85px,1fr) 88px 74px;gap:4px;font-size:11px}.terminal .agent{display:none}.side-layout,.terminal.narrow .side-layout{display:block}.sidebar{border-right:0;border-bottom:1px solid var(--line);padding:0 0 10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr}.sidebar-title{grid-column:1/-1}.project-choice{padding:6px!important}.project-heading .counts{display:none}.fields{grid-template-columns:85px minmax(0,1fr);gap:2px 7px}.caption{margin-top:20px}.option strong{font-size:14px}.picker-bar{flex-wrap:wrap}.picker-bar .hint{margin-left:0}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<div class="eyebrow">agentnook / watch / Layoutstudie 02</div>
+<h1>Erst Projekt. Dann Instanz.</h1>
+<p class="intro">Drei Wege, Agent-VMs nach Projekt zu ordnen. Gleiche Beispieldaten, gleicher Detailbereich, unterschiedliche Navigation. Klickbare Terminal-Skizzen – keine Verbindung zu VMs.</p>
+<div class="brief"><p><strong>Ziel:</strong> Projekte sofort unterscheiden, Instanzen gezielt wählen und blockierte Agenten auch außerhalb des ausgewählten Projekts bemerken.</p></div>
+</header>
+<nav class="options" aria-label="Layout-Vorschläge">
+<button class="option" data-layout="groups" aria-pressed="true"><span class="eyebrow">A · Empfehlung</span><strong>Aufklappbare Projektgruppen</strong><small>Alle Projekte in einer Liste. Instanzen direkt darunter, Details unten.</small></button>
+<button class="option" data-layout="sidebar" aria-pressed="false"><span class="eyebrow">B · Breite Terminals</span><strong>Projekt-Sidebar</strong><small>Projekt links auswählen, dessen Instanzen und Details rechts betrachten.</small></button>
+<button class="option" data-layout="picker" aria-pressed="false"><span class="eyebrow">C · Kompakter Fokus</span><strong>Projekt-Picker</strong><small>Ein Projekt im Fokus. Suchbare Auswahl statt dauerhaft belegter Sidebar.</small></button>
+</nav>
+<div class="controls">
+<div class="control-group" aria-label="Beispielzustand"><span class="control-label">Daten</span><button class="pill" data-scenario="normal" aria-pressed="true">Normal</button><button class="pill" data-scenario="stale" aria-pressed="false">Heartbeat fehlt</button><button class="pill" data-scenario="empty" aria-pressed="false">Leer</button></div>
+<div class="control-group" aria-label="Vorschaubreite"><span class="control-label">Breite</span><button class="pill" data-width="wide" aria-pressed="true">Breit</button><button class="pill" data-width="narrow" aria-pressed="false">Kompakt</button></div>
+<button id="theme" class="pill theme-toggle" aria-pressed="false">Dunkle Seite</button>
+</div>
+<div class="demo-wrap">
+<section id="terminal" class="terminal" tabindex="0" aria-label="Interaktiver Watch-Prototyp. Klicken, dann Pfeiltasten verwenden.">
+<div class="chrome"><span>$ nook watch</span><span>MOCK / READ ONLY</span></div>
+<div class="screen">
+<div class="screen-header"><div class="brand">agentnook fleet</div><div class="dim">All projects · AGENTNOOK_HOME: /Users/demo/.agentnook</div><div id="global-summary" class="global-summary" aria-live="polite"></div></div>
+<div id="content"></div>
+<div id="detail" class="details"></div>
+<div id="help" class="help"></div>
+<div id="picker" class="picker-overlay" role="dialog" aria-modal="true" aria-label="Projekt wählen" hidden><h3>Projekt wählen</h3><label for="project-search" class="dim">Vollständigen Pfad durchsuchen</label><input id="project-search" placeholder="Projektname oder Pfad …" autocomplete="off"><div id="picker-results"></div><div class="dim">↑↓ wählen · Enter übernehmen · Esc zurück</div></div>
+</div>
+</section>
+</div>
+<div class="caption"><div><span id="layout-badge" class="badge">A · Empfehlung</span><h2 id="layout-title">Globaler Überblick ohne Ansichtswechsel</h2><p id="layout-description"></p></div><div><h3>Abwägung</h3><p id="layout-tradeoff"></p><p><strong>Ausprobieren:</strong> Instanz anklicken, Projekt wechseln oder einklappen. Danach denselben Zustand in anderem Layout vergleichen.</p></div></div>
+<section class="comparison"><div class="eyebrow">Entscheidungshilfe</div><h2>Welcher Arbeitsmodus passt?</h2><div class="table-scroll"><table><thead><tr><th>VORSCHLAG</th><th>STÄRKE</th><th>GRENZE</th><th>GUT FÜR</th></tr></thead><tbody><tr><td>A · Projektgruppen</td><td>Alle Instanzen vergleichbar; nur eine Navigationsliste</td><td>Viele Projekte erzeugen längere Liste</td><td>Globales Beobachten mehrerer Agenten</td></tr><tr><td>B · Sidebar</td><td>Stabile Projektwahl; mehr Platz für aktive Instanzen</td><td>Zwei Fokusbereiche; benötigt Breite</td><td>Viele Projekte, Arbeit jeweils in einem</td></tr><tr><td>C · Picker</td><td>Maximaler Platz für Instanzen und Details</td><td>Andere Projekte nur über Zähler präsent</td><td>Kleine Terminals, konzentriertes Beobachten</td></tr></tbody></table></div></section>
+<section class="rules"><div class="eyebrow">Für alle Varianten</div><h2>Gleiche Daten. Klare Grenzen.</h2><div class="rules-grid"><div><h3>Projektidentität ist vollständiger Pfad</h3><p>Gruppierung nach exaktem Workspace-Mount, nicht Git-Root oder Ordnername. Zwei „agentnook“-Ordner bleiben getrennt. Kurzlabel enthält unterscheidenden Elternpfad; vollständiger Pfad in Details.</p></div><div><h3>VM und Agent bleiben getrennt</h3><p>„running“ beschreibt VM. „working“, „idle“, „blocked“ und „unknown“ beschreiben Agent. Gruppenköpfe zeigen Anzahlen, keinen irreführenden gemeinsamen Status.</p></div><div><h3>Auswahl bleibt bei Aktualisierung stabil</h3><p>Vorgabe für spätere Umsetzung: Projekt per Pfad, Instanz per VM-Identität merken. Neue Instanzen stehlen keinen Fokus. Bei Ende: nächste Instanz desselben Projekts, sonst Projektgruppe; bei Projektende nächste Gruppe mit Hinweis.</p></div><div><h3>Nur Ansicht, keine VM-Steuerung</h3><p>Nur aktuelles AGENTNOOK_HOME. CPU/RAM sind Limits, Versionen Image-Metadaten. Veraltete Telemetrie: Aktivität und Laufzeit unknown. Keine automatischen Stops, Neustarts oder Permission-Entscheidungen.</p></div></div></section>
+<p class="footnote">Entwurfsstand, keine implementierten TUI-Funktionen. Erfundene Instanzen, feste Uhrzeit, kein Polling. Auswahl und Gruppierung sind interaktiv; Tabellenbreite ist angenähert, kein exakter Terminal-Zellenrenderer. Bestehender Prototyp: <a href="fleet-watch.html">flache Fleet-Ansicht</a>.</p>
+</main>
+<script>
+'use strict';
+const projects = [
+  {id:'nook',label:'github / agentnook',path:'/Users/demo/code/github/agentnook'},
+  {id:'shop',label:'work / storefront',path:'/Users/demo/code/work/storefront'},
+  {id:'lab',label:'experiments / agentnook',path:'/Users/demo/code/experiments/agentnook'}
+];
+const instances = [
+  {id:'nook-run-a7f21c',project:'nook',agent:'pi',profile:'privat',vm:'running',activity:'working',uptime:'12m34s',heartbeat:'1s',cpu:2,ram:'2 GiB',version:'1.4.0',image:'pi-dev'},
+  {id:'nook-run-b831de',project:'nook',agent:'claude',profile:'arbeit',vm:'running',activity:'blocked',uptime:'38m02s',heartbeat:'1s',cpu:4,ram:'4 GiB',version:'2.1.99',image:'claude-dev'},
+  {id:'nook-run-c9d402',project:'shop',agent:'opencode',profile:'arbeit',vm:'running',activity:'idle',uptime:'8m17s',heartbeat:'2s',cpu:2,ram:'2 GiB',version:'2.3.2',image:'opencode-dev'},
+  {id:'nook-run-d2e790',project:'shop',agent:'pi',profile:'arbeit',vm:'unreachable',activity:'unknown',uptime:'unknown',heartbeat:'18s',cpu:2,ram:'2 GiB',version:'1.4.0',image:'pi-dev'},
+  {id:'nook-run-e6a012',project:'lab',agent:'pi',profile:'privat',vm:'running',activity:'working',uptime:'3m41s',heartbeat:'1s',cpu:2,ram:'2 GiB',version:'1.4.0',image:'pi-dev'}
+];
+const copy = {
+  groups:{badge:'A · Empfehlung',title:'Globaler Überblick ohne Ansichtswechsel',description:'Projektköpfe gliedern die bestehende Liste. Jede Gruppe lässt sich einklappen. Auswahl kann auf Projekt oder Instanz stehen; Details darunter folgen dieser Auswahl.',tradeoff:'Kleinster konzeptioneller Schritt gegenüber heutiger Ansicht. Alle Projekte gleichzeitig sichtbar. Bei vielen Instanzen wird gescrollt; Einklappen schafft Platz.'},
+  sidebar:{badge:'B · Breite Terminals',title:'Projekt links. Instanzen rechts.',description:'Links stehen Projekte samt Instanz-, blocked- und unknown-Zählern. Rechts erscheinen nur Instanzen des ausgewählten Projekts. Pro Projekt bleibt zuletzt gewählte Instanz erhalten.',tradeoff:'Gut bei vielen Projekten. VM-Status und Aktivität anderer Instanzen sind nicht direkt sichtbar. Auf schmalen Displays wird Projektliste oberhalb angeordnet; zusätzliche Fokusnavigation nötig.'},
+  picker:{badge:'C · Kompakter Fokus',title:'Ein Projekt im Fokus, Rest einen Tastendruck entfernt',description:'Auswahlleiste zeigt aktuelles Projekt. „p“ öffnet suchbaren Picker mit vollständigen Pfaden und Projektzählern. Globale Warnungszähler bleiben oberhalb sichtbar.',tradeoff:'Spart dauerhaft belegten Navigationsplatz. Projektwechsel ist zusätzlicher Schritt. Kein direkter Vergleich verschiedener Projekte; globale blocked/unknown-Zähler müssen Aufmerksamkeit erhalten.'}
+};
+const state = {layout:'groups',scenario:'normal',width:'wide',project:'nook',selected:instances[0].id,collapsed:new Set(),focus:'instances',remembered:{},pickerIndex:0,ended:false};
+const $ = id => document.getElementById(id);
+const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const current = () => state.scenario === 'empty' ? [] : instances.map(item => state.scenario === 'stale' ? {...item,activity:'unknown',uptime:'unknown',heartbeat:'18s'} : item);
+const members = id => current().filter(item => item.project === id);
+const liveProjects = () => projects.filter(project => members(project.id).length);
+const selectedInstance = () => current().find(item => item.id === state.selected);
+const shortId = item => item.id.replace('nook-run-','');
+function counts(items) {
+  return `${items.length} VM · ${items.filter(i => i.activity === 'blocked').length} blocked · ${items.filter(i => i.activity === 'unknown').length} unknown`;
+}
+function projectForSelection() { return projects.find(p => p.id === (selectedInstance()?.project ?? state.selected.replace('project:',''))) ?? projects.find(p => p.id === state.project); }
+function chooseProject(id) {
+  state.project = id;
+  state.selected = state.remembered[id] ?? members(id)[0]?.id ?? `project:${id}`;
+  state.focus = 'projects';
+}
+function chooseInstance(id) {
+  const item = current().find(i => i.id === id);
+  if (!item) return;
+  state.selected = id;
+  state.project = item.project;
+  state.remembered[item.project] = id;
+  state.focus = 'instances';
+}
+function columns() {
+  return '<div class="columns" aria-hidden="true"><span>INSTANCE</span><span class="agent">AGENT</span><span class="profile">PROFILE</span><span>VM STATUS</span><span>ACTIVITY</span><span class="uptime">UPTIME</span></div>';
+}
+function rows(items) {
+  return items.map(item => `<button class="instance-row ${state.selected === item.id ? 'selected' : ''}" data-instance="${item.id}" aria-pressed="${state.selected === item.id}" aria-label="${escapeHTML(item.id + ', ' + item.agent + ', VM ' + item.vm + ', Agent ' + item.activity)}"><span class="identity">${state.selected === item.id ? '▸' : ' '} ${shortId(item)}</span><span class="agent">${item.agent}</span><span class="profile">${item.profile}</span><span class="vm-${item.vm}">${item.vm}</span><span class="activity-${item.activity}">${item.activity}</span><span class="uptime">${item.uptime}</span></button>`).join('');
+}
+function projectButton(project, picker = false) {
+  const active = picker ? filteredProjects()[state.pickerIndex]?.id === project.id : state.project === project.id;
+  return `<button class="project-choice ${active ? 'selected' : ''}" ${picker ? 'data-pick' : 'data-project'}="${project.id}" aria-pressed="${active}"><strong>${escapeHTML(project.label)}</strong><small>${escapeHTML(project.path)}</small><small class="totals">${counts(members(project.id))}</small></button>`;
+}
+function renderContent() {
+  if (state.ended) return '<div class="empty"><strong>Watch beendet · nur Simulation</strong>Alle VMs bleiben unverändert. Layout- oder Szenario-Button startet Vorschau erneut.</div>';
+  if (!current().length) return '<div class="empty"><strong>Keine aktiven Agent-VMs in diesem Datenpfad.</strong>„nook“ in beliebigem Projekt mit diesem AGENTNOOK_HOME starten.<br>Watch bleibt offen. Projekte erscheinen erst mit aktiver Instanz.</div>';
+  if (state.layout === 'groups') {
+    return '<div class="list-region" aria-label="Projekte und Instanzen">' + liveProjects().map(project => {
+      const collapsed = state.collapsed.has(project.id);
+      return `<div class="group"><button class="project-heading ${state.selected === 'project:' + project.id ? 'selected' : ''}" data-toggle="${project.id}" aria-expanded="${!collapsed}" aria-controls="group-${project.id}"><span>${collapsed ? '▸' : '▾'}</span><span><strong>${escapeHTML(project.label)}</strong><small>${escapeHTML(project.path)}</small></span><span class="counts">${counts(members(project.id))}</span></button><div id="group-${project.id}" class="tree-rows" ${collapsed ? 'hidden' : ''}>${columns()}${rows(members(project.id))}</div></div>`;
+    }).join('') + '</div>';
+  }
+  const project = projects.find(p => p.id === state.project);
+  if (state.layout === 'sidebar') {
+    return `<div class="side-layout"><aside class="sidebar" aria-label="Projektwahl"><div class="sidebar-title ${state.focus === 'projects' ? 'focused' : ''}">PROJECTS ${state.focus === 'projects' ? '◂ FOCUS' : ''}</div>${liveProjects().map(p => projectButton(p)).join('')}</aside><div><div class="pane-title ${state.focus === 'instances' ? 'focused' : ''}">INSTANCES ${state.focus === 'instances' ? '◂ FOCUS' : ''} · ${escapeHTML(project.label)}</div><div class="list-region">${columns()}${rows(members(project.id))}</div></div></div>`;
+  }
+  return `<button class="picker-bar" data-open-picker><span class="dim">PROJECT ▾</span><strong>${escapeHTML(project.label)}</strong><span class="hint">p wählen · ${members(project.id).length} Instanzen</span></button><div class="project-path">${escapeHTML(project.path)}</div><div class="list-region">${columns()}${rows(members(project.id))}</div>`;
+}
+function renderDetail() {
+  const item = selectedInstance();
+  const project = projectForSelection();
+  if (!item) return `<div class="detail-title">Project · ${escapeHTML(project.label)}</div><dl class="fields"><dt>Path</dt><dd>${escapeHTML(project.path)}</dd><dt>Instances</dt><dd>${counts(members(project.id))}</dd><dt>Agent states</dt><dd>${['working','idle','blocked','unknown'].map(s => `${members(project.id).filter(i => i.activity === s).length} ${s}`).join(' · ')}</dd></dl><div class="dim">Projektgruppe gewählt. → klappt auf; ↑↓ wählt Instanz.</div>`;
+  const unknown = item.activity === 'unknown';
+  return `<div class="detail-title">Machine · ${item.id}</div><dl class="fields"><dt>Project</dt><dd>${escapeHTML(project.path)}</dd><dt>Agent / Profile</dt><dd>${item.agent} / ${item.profile}</dd><dt>VM / Activity</dt><dd>${item.vm} / ${item.activity}</dd><dt>Runtime</dt><dd>${item.uptime} · Agent-Laufzeit, nicht VM-Alter</dd><dt>Heartbeat</dt><dd>vor ${item.heartbeat} · host-observed${unknown ? ' · stale' : ''}</dd><dt>CPU / RAM</dt><dd>${item.cpu} vCPU / ${item.ram} · Limits, keine Auslastung</dd><dt>Image</dt><dd>${item.image} · ${item.version} (Katalog, nicht Gast-Abfrage)</dd></dl>${unknown ? '<div class="notice">Kein frischer Agent-Report. Aktivität und Laufzeit unbekannt; VM-Status separat.</div>' : item.activity === 'blocked' ? '<div class="notice">Agent meldet blocked: wartet auf Eingabe oder Freigabe.</div>' : ''}<div class="mounts">Mounts · ${escapeHTML(project.path)} → /workspace [rw]<br>/Users/demo/.agentnook/profiles/${item.profile}/${item.agent} → /root [rw]<br>/tmp/agentnook-telemetry-&lt;run-id&gt; → /run/agentnook-telemetry [rw]</div>`;
+}
+function render() {
+  const data = current();
+  $('global-summary').textContent = `${liveProjects().length} Projekte · ${counts(data)} · Snapshot 14:44:08 (simuliert)`;
+  $('terminal').classList.toggle('narrow',state.width === 'narrow');
+  $('content').innerHTML = renderContent();
+  $('detail').hidden = !data.length || state.ended;
+  if (data.length && !state.ended) $('detail').innerHTML = renderDetail();
+  $('help').textContent = state.layout === 'groups' ? '↑↓ / jk Auswahl · ← einklappen · → aufklappen · q nur Watch beenden' : state.layout === 'sidebar' ? '← / h Projekte · → / l Instanzen · ↑↓ / jk Auswahl · q nur Watch beenden' : 'p Projekt wählen · ↑↓ / jk Instanz wählen · q nur Watch beenden';
+  for (const key of ['layout','scenario','width']) document.querySelectorAll(`[data-${key}]`).forEach(button => button.setAttribute('aria-pressed',String(button.dataset[key] === state[key])));
+  const info = copy[state.layout];
+  for (const key of ['badge','title','description','tradeoff']) $('layout-' + key).textContent = info[key];
+}
+function filteredProjects() {
+  const query = $('project-search').value.toLocaleLowerCase();
+  return liveProjects().filter(p => (p.path + ' ' + p.label).toLocaleLowerCase().includes(query));
+}
+function renderPicker() {
+  const filtered = filteredProjects();
+  state.pickerIndex = Math.max(0,Math.min(state.pickerIndex,filtered.length - 1));
+  $('picker-results').innerHTML = filtered.length ? filtered.map(p => projectButton(p,true)).join('') : '<div class="empty">Kein passendes aktives Projekt.</div>';
+  $('picker-results').querySelector('.selected')?.scrollIntoView({block:'nearest'});
+}
+function openPicker() {
+  if (!current().length || state.ended) return;
+  $('project-search').value = '';
+  state.pickerIndex = Math.max(0,liveProjects().findIndex(p => p.id === state.project));
+  $('picker').hidden = false;
+  document.querySelectorAll('#content button').forEach(b => b.disabled = true);
+  renderPicker();
+  $('project-search').focus();
+}
+function closePicker() {
+  $('picker').hidden = true;
+  document.querySelectorAll('#content button').forEach(b => b.disabled = false);
+  $('terminal').focus({preventScroll:true});
+}
+function focusSelection() {
+  const target = state.focus === 'projects' && state.layout === 'sidebar' ? document.querySelector(`[data-project="${state.project}"]`) : $('content').querySelector('.instance-row.selected,.project-heading.selected');
+  target?.focus({preventScroll:true});
+  target?.scrollIntoView({block:'nearest'});
+}
+for (const key of ['layout','scenario','width']) document.querySelectorAll(`[data-${key}]`).forEach(button => button.addEventListener('click',() => {
+  closePicker();
+  state[key] = button.dataset[key];
+  state.ended = false;
+  if (key === 'layout' && state.layout !== 'groups' && !selectedInstance()) chooseProject(state.project);
+  render();
+}));
+$('theme').addEventListener('click',() => { const dark = document.body.classList.toggle('dark'); $('theme').setAttribute('aria-pressed',String(dark)); $('theme').textContent = dark ? 'Helle Seite' : 'Dunkle Seite'; });
+$('content').addEventListener('click',event => {
+  const target = event.target.closest('button');
+  if (!target) return;
+  if (target.dataset.instance) chooseInstance(target.dataset.instance);
+  if (target.dataset.project) chooseProject(target.dataset.project);
+  if (target.dataset.toggle) {
+    const id = target.dataset.toggle;
+    state.collapsed.has(id) ? state.collapsed.delete(id) : state.collapsed.add(id);
+    state.selected = 'project:' + id;
+    state.project = id;
+  }
+  if (target.hasAttribute('data-open-picker')) { openPicker(); return; }
+  render();
+  if (target.dataset.project) document.querySelector(`[data-project="${state.project}"]`)?.focus({preventScroll:true});
+  else focusSelection();
+});
+$('project-search').addEventListener('input',() => { state.pickerIndex = 0; renderPicker(); });
+$('picker-results').addEventListener('click',event => {
+  const target = event.target.closest('[data-pick]');
+  if (!target) return;
+  chooseProject(target.dataset.pick);
+  closePicker(); render(); focusSelection();
+});
+$('terminal').addEventListener('keydown',event => {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (!$('picker').hidden) {
+    if (event.key === 'Escape') { event.preventDefault(); closePicker(); return; }
+    if (event.key === 'Tab') { event.preventDefault(); $('project-search').focus(); return; }
+    if (['ArrowDown','ArrowUp','Enter'].includes(event.key)) {
+      event.preventDefault();
+      if (event.key === 'Enter') {
+        const project = filteredProjects()[state.pickerIndex];
+        if (project) { chooseProject(project.id); closePicker(); render(); focusSelection(); }
+      } else { state.pickerIndex += event.key === 'ArrowDown' ? 1 : -1; renderPicker(); }
+    }
+    return;
+  }
+  if (event.key === 'q') { state.ended = true; render(); $('terminal').focus({preventScroll:true}); return; }
+  if (state.ended || !current().length) return;
+  if (state.layout === 'picker' && event.key === 'p') { event.preventDefault(); openPicker(); return; }
+  const horizontal = ['ArrowLeft','h','ArrowRight','l'].includes(event.key);
+  if (horizontal && state.layout !== 'picker') {
+    event.preventDefault();
+    const left = ['ArrowLeft','h'].includes(event.key);
+    if (state.layout === 'sidebar') state.focus = left ? 'projects' : 'instances';
+    else {
+      const project = projectForSelection();
+      left ? state.collapsed.add(project.id) : state.collapsed.delete(project.id);
+      state.selected = 'project:' + project.id;
+    }
+    render(); focusSelection(); return;
+  }
+  if (!['ArrowDown','ArrowUp','j','k'].includes(event.key)) return;
+  event.preventDefault();
+  const delta = ['ArrowDown','j'].includes(event.key) ? 1 : -1;
+  if (state.layout === 'groups') {
+    const visible = liveProjects().flatMap(p => ['project:' + p.id,...(state.collapsed.has(p.id) ? [] : members(p.id).map(i => i.id))]);
+    const next = visible[Math.max(0,Math.min(visible.length - 1,visible.indexOf(state.selected) + delta))];
+    if (next.startsWith('project:')) { state.selected = next; state.project = next.slice(8); }
+    else chooseInstance(next);
+  } else if (state.layout === 'sidebar' && state.focus === 'projects') {
+    const visible = liveProjects();
+    chooseProject(visible[Math.max(0,Math.min(visible.length - 1,visible.findIndex(p => p.id === state.project) + delta))].id);
+  } else {
+    const visible = members(state.project);
+    chooseInstance(visible[Math.max(0,Math.min(visible.length - 1,visible.findIndex(i => i.id === state.selected) + delta))].id);
+  }
+  render(); focusSelection();
+});
+render();
+</script>
+</body>
+</html>

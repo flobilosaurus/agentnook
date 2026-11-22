@@ -35,7 +35,7 @@ Im Agenten einmal anmelden: Pi über `/login`, OpenCode über `/connect`, Claude
 ```sh
 nook                                    # einmal einrichten; danach gespeicherten Start nutzen
 nook -- --continue                      # Argumente an den gespeicherten Agenten weiterreichen
-nook watch                              # laufende Agenten dieses Projektordners beobachten
+nook watch                              # alle Projekte im aktuellen AGENTNOOK_HOME beobachten
 nook --mount ../lib:/mnt/lib:ro          # zusätzliche Freigabe speichern, nur lesbar
 nook --clear-mounts                      # zusätzliche Freigaben entfernen
 nook --select                           # nur bei Bedarf die Einrichtung ändern
@@ -126,9 +126,13 @@ AGENTNOOK_HOME="$HOME/.agentnook-multi" nook
 
 ## Fleet im Blick
 
-`nook watch` zeigt laufende agentnook-Instanzen des aktuellen Projektordners und Datenpfads – unabhängig vom Agententyp. Die breite Ansicht enthält Agent, Profil, VM-Status, Aktivität, Laufzeit, CPU-/RAM-Limits und Imageversion; Details zeigen sämtliche Freigaben. In schmalen Terminals stehen Agent und Version im Detailbereich.
+`nook watch` zeigt immer laufende agentnook-Instanzen aller Projektordner im aktuellen `AGENTNOOK_HOME` – unabhängig vom Agententyp und Aufrufordner. Instanzen anderer Datenpfade bleiben ausgeschlossen. Ein projektlokaler Modus und das Flag `--all` existieren nicht mehr. Links steht ein einfacher, immer vollständig geöffneter Navigator: **Profil → Projekt → Worktree → VM**. Nur VM-Zeilen sind auswählbar; Profil-, Projekt- und Worktree-Zeilen dienen als Überschriften und werden übersprungen. Rechts folgt der Inspektor der gewählten VM und zeigt die Instanzen ihres exakten Workspace/Profils sowie Details einschließlich vollständiger Pfade, CPU-/RAM-Limits, Imageversion und sämtlicher Freigaben. In schmalen Terminals steht der Navigator oberhalb des Inspektors. Es gibt keine klappbaren Gruppen oder Detail-Tabs.
 
-Mit ↑/↓ eine Instanz auswählen. `q` beendet nur die Ansicht, nicht die VMs. Fehlende oder veraltete Telemetrie erscheint als `unknown`. `VERSION¹` stammt aus dem Imagekatalog, nicht aus einer erneuten Abfrage des Gasts. Arbeits-VMs tragen den exakten lokalen Artefaktpfad als smolvm-Label. Darüber wird die Imageversion zugeordnet; geänderte Projektstandards verändern die Anzeige bereits laufender Instanzen nicht.
+↑/↓ oder `j`/`k` wählt die vorherige/nächste VM im Baum – auch über Projekt- und Profilgrenzen hinweg. `Tab`/`Shift+Tab` wechselt zwischen Navigator und Instanzliste, ohne die gemeinsame VM-Auswahl zu ändern. ←/`h` fokussiert den Navigator, →/`l` die Instanzen. `PgUp`/`PgDn` scrollt Details, `Home`/`End` springt darin zum Anfang/Ende. Die Auswahl bleibt bei Aktualisierungen erhalten; endet eine gewählte VM, wird möglichst eine andere Instanz desselben Workspace/Profils gewählt, sonst eine VM desselben Projekts oder Profils und zuletzt eine andere verfügbare VM. Gruppen werden dabei nie markiert. `q` beendet nur die Ansicht, nicht die VMs.
+
+Git-Metadaten ordnen Worktrees auch außerhalb des Hauptordners ihrem Projekt zu. Hauptcheckouts bleiben als Gruppenknoten sichtbar, wenn nur Worktree-Instanzen aktiv sind. Das gleiche Repository unter verschiedenen Profilen bleibt getrennt; Unterordner eines Checkouts behalten eigene Workspace-Gruppen. Die Erkennung ist rein lesend, zeitlich begrenzt und kurz zwischengespeichert. Ohne Git oder bei Erkennungsfehlern bleiben Instanzen als exakte Ordnergruppen sichtbar. Startverhalten und Projektfilter ändern sich dadurch nicht.
+
+Fehlende oder veraltete Telemetrie erscheint als `unknown`. `Version¹` stammt aus dem Imagekatalog, nicht aus einer erneuten Abfrage des Gasts. Arbeits-VMs tragen den exakten lokalen Artefaktpfad als smolvm-Label. Darüber wird die Imageversion zugeordnet; geänderte Projektstandards verändern die Anzeige bereits laufender Instanzen nicht.
 
 Interaktive Telemetrie nutzt je Agent einen eigenen Adapter:
 

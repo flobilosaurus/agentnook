@@ -30,10 +30,10 @@ func fleetKey(m fleetModel, value string) (fleetModel, tea.Cmd) {
 
 func fleetSnapshot() fleet.Snapshot {
 	return fleet.Snapshot{Instances: []fleet.Instance{
-		{Name: "run-a", Agent: "pi", Profile: "work", State: "running", CPUs: 2, MemoryMiB: 2048, AgentVersion: "1.4.0", Image: "/images/dev.smolmachine", ImageName: "dev", BaseImage: "node:24-bookworm", CreatedAt: time.Unix(1731920000, 0), Mounts: []config.Mount{
+		{Name: "run-a", Project: "/repo", Agent: "pi", Profile: "work", State: "running", CPUs: 2, MemoryMiB: 2048, AgentVersion: "1.4.0", Image: "/images/dev.smolmachine", ImageName: "dev", BaseImage: "node:24-bookworm", CreatedAt: time.Unix(1731920000, 0), Mounts: []config.Mount{
 			{Host: "/repo", Guest: "/workspace"}, {Host: "/data/profiles/work/pi", Guest: "/root"}, {Host: "/docs", Guest: "/mnt/docs", ReadOnly: true},
 		}},
-		{Name: "run-b", Agent: "claude", Profile: "private", State: "unreachable", CPUs: 4, MemoryMiB: 4096, Mounts: []config.Mount{{Host: "/repo", Guest: "/workspace"}}},
+		{Name: "run-b", Project: "/z-other project", Agent: "claude", Profile: "work", State: "unreachable", CPUs: 4, MemoryMiB: 4096, Mounts: []config.Mount{{Host: "/repo", Guest: "/workspace"}}},
 	}}
 }
 
@@ -46,24 +46,57 @@ func loadedFleet(t *testing.T) fleetModel {
 	if cmd == nil {
 		t.Fatal("refresh not scheduled")
 	}
+	chooseVM(t, &m, "run-a")
+	m.navigatorFocus = false // These tests exercise inspector selection.
 	return m
 }
 
 func TestFleetAllDetailsAndMountsVisibleWithoutTabs(t *testing.T) {
 	m := loadedFleet(t)
 	view := ansi.Strip(m.View())
-	for _, value := range []string{"agentnook fleet", "VM STATUS", "VERSION¹", "Version¹", "running", "Machine", "node:24-bookworm", "2 vCPU / 2 GiB", "1.4.0", "Storage", "unknown", "Activity", "Runtime", "Heartbeat", "awaiting heartbeat progress", "Mounts · 3", "/repo → /workspace [rw]", "/data/profiles/work/pi → /root [rw]", "/docs → /mnt/docs [ro]", "Record age, not uptime"} {
+	for _, value := range []string{"agentnook fleet", "VM STATUS", "Navigator", "Instances", "Version¹", "running", "Machine", "node:24-bookworm", "2 vCPU / 2 GiB", "1.4.0", "Storage", "unknown", "Activity", "Runtime", "Heartbeat", "awaiting heartbeat progress", "Mounts · 3", "/repo → /workspace [rw]", "/data/profiles/work/pi → /root [rw]", "/docs → /mnt/docs [ro]", "Record age, not uptime"} {
 		if !strings.Contains(view, value) {
 			t.Errorf("missing %q in\n%s", value, view)
 		}
 	}
-	if strings.Contains(view, "tabs") || strings.Contains(view, "Tab ") {
-		t.Fatal("unexpected tabs", view)
+	if !strings.Contains(view, "Tab focus") {
+		t.Fatal("focus navigation help missing", view)
 	}
 	m, _ = fleetKey(m, "j")
 	view = ansi.Strip(m.View())
 	if !strings.Contains(view, "4 vCPU / 4 GiB") || !strings.Contains(view, "Mounts · 1") || strings.Contains(view, "/mnt/docs") || !strings.Contains(view, "VM unreachable") {
 		t.Fatal("details did not follow selection", view)
+	}
+}
+
+func TestFleetGlobalScopeAndProjectPaths(t *testing.T) {
+	m := loadedFleet(t)
+	m.scope = "All projects · AGENTNOOK_HOME: /data"
+	for _, width := range []int{160, 120, 80, 46} {
+		chooseVM(t, &m, "run-a")
+		m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: width, Height: 50})
+		view := ansi.Strip(m.View())
+		if !strings.Contains(view, "All projects") || !strings.Contains(view, "Project") || !strings.Contains(view, "/repo") {
+			t.Fatalf("missing global scope or project at width %d:\n%s", width, view)
+		}
+		if width == 160 && (!strings.Contains(view, "Navigator") || !strings.Contains(view, "Instances")) {
+			t.Fatal("wide view missing split panes", view)
+		}
+		m, _ = fleetKey(m, "j")
+		if view := ansi.Strip(m.View()); !strings.Contains(view, "/z-other project") {
+			t.Fatal("project did not follow selection", view)
+		}
+		for _, line := range strings.Split(m.View(), "\n") {
+			if lipgloss.Width(line) > width {
+				t.Fatalf("global view overflows width %d: %q", width, line)
+			}
+		}
+	}
+	m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: 120, Height: 50})
+	m, _ = fleetUpdate(m, fleetResultMsg{at: time.Now()})
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, "in this scope") || strings.Contains(view, "this exact directory") || strings.Contains(view, "Start nook here") {
+		t.Fatal("global empty state implies local project", view)
 	}
 }
 
@@ -76,10 +109,13 @@ func TestFleetPiStatusUptimeHeartbeatAndStaleDiscovery(t *testing.T) {
 	for _, width := range []int{120, 80, 46} {
 		m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: width, Height: 50})
 		view := ansi.Strip(m.View())
-		for _, value := range []string{"VM STATUS", "ACTIVITY", "UPTIME", "working", "12m34s", "Heartbeat", "host-observed"} {
+		for _, value := range []string{"VM STATUS", "ACTIVITY", "UPTIME", "working", "12m34s"} {
 			if !strings.Contains(view, value) {
 				t.Fatalf("missing %q at width %d:\n%s", value, width, view)
 			}
+		}
+		if !strings.Contains(fleetHeartbeat(m.snapshot.Instances[0], now), "host-observed") {
+			t.Fatal("heartbeat details missing")
 		}
 	}
 	m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: 120, Height: 50})

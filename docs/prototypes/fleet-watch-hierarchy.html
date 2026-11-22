@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>nook watch · Profil, Projekt, Worktree</title>
+<style>
+:root{color-scheme:light;--background:oklch(.97 .005 260);--foreground:oklch(.18 .02 260);--card:oklch(1 0 0);--primary:oklch(.50 .25 280);--muted:oklch(.92 .01 260);--muted-foreground:oklch(.40 .02 260);--border:oklch(.88 .01 260);--font-sans:Inter,system-ui,-apple-system,sans-serif;--font-mono:"SFMono-Regular",Consolas,monospace;--font-display:Georgia,serif;--term:#14191f;--ink:#e4eaf0;--dim:#a2aebc;--line:#34414d;--cyan:#8bddd1;--yellow:#f0cf8c;--green:#a7d8b5;--red:#eeaaa3}
+*{box-sizing:border-box}body{margin:0;font:15px/1.6 var(--font-sans);color:var(--foreground);background:var(--background)}main{max-width:1280px;margin:auto;padding:48px 24px 64px}h1{font:500 clamp(30px,4vw,46px)/1.15 var(--font-display);letter-spacing:-.035em;margin:10px 0 18px}h2{font:500 25px/1.3 var(--font-display);margin:0 0 8px}h3{font-size:14px;margin:0 0 6px}p{margin:0}.eyebrow{font:11px var(--font-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted-foreground)}.intro{color:var(--muted-foreground);max-width:82ch}.brief{margin:22px 0 28px;padding:12px 18px;border-left:3px solid var(--primary);background:var(--card);font-size:14px}.options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:22px}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid var(--primary);outline-offset:3px}.option{border:1px solid var(--border);border-radius:9px;background:var(--card);color:inherit;padding:18px;text-align:left}.option[aria-pressed=true]{border:2px solid var(--primary);padding:17px;background:color-mix(in oklab,var(--primary) 4%,var(--card))}.option .eyebrow{color:var(--primary)}.option strong{display:block;margin:7px 0;font-size:16px}.option small{color:var(--muted-foreground);display:block;line-height:1.5}.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}.controls>div{display:flex;gap:5px;align-items:center}.control-label{font:10px var(--font-mono);color:var(--muted-foreground);margin-right:5px;text-transform:uppercase}.pill{border:1px solid var(--border);border-radius:5px;background:var(--card);color:inherit;padding:5px 10px;font-size:12px}.pill[aria-pressed=true]{color:var(--primary);border-color:var(--primary)}#theme{margin-left:auto}.terminal-wrap{overflow-x:auto;padding:3px}.terminal{background:var(--term);color:var(--ink);border:1px solid var(--line);border-radius:9px;box-shadow:0 16px 45px #17212b16;font:12px/1.65 var(--font-mono);width:100%;max-width:1190px;margin:auto;min-width:340px}.terminal.compact{max-width:760px}.terminal:focus-visible{outline:2px solid var(--primary);outline-offset:2px}.chrome{padding:9px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;color:var(--dim);font-size:10px}.chrome span:last-child{color:var(--cyan)}.screen{padding:18px}.brand{font-size:14px;color:var(--cyan);font-weight:600}.dim{color:var(--dim)}.scope{overflow-wrap:anywhere}.summary{color:var(--dim);margin:6px 0 17px}.terminal button{background:none;border:0;color:inherit;font:inherit;text-align:left;border-radius:0}.terminal button:hover{background:#ffffff07}.terminal button:focus-visible{outline-color:var(--cyan);outline-offset:-2px}.tree{max-height:430px;overflow:auto;scrollbar-color:var(--line) transparent}.tree-row,.columns,.vm-row{display:grid;grid-template-columns:minmax(230px,1fr) 75px 105px 92px 78px;gap:8px;align-items:center;width:100%;padding:6px 8px;text-align:left}.columns{font-size:10px;color:var(--dim);padding:0 8px 8px}.tree-row{min-height:27px;padding-top:3px;padding-bottom:3px}.tree-row.branch{grid-template-columns:minmax(0,1fr) auto;padding-top:3px;padding-bottom:3px}.node-main{display:flex;gap:7px;align-items:center;min-width:0;padding-left:calc(var(--depth)*18px)}.node-text{min-width:0;overflow-wrap:anywhere}.node-text strong{font-weight:500}.connector{width:18px;flex-shrink:0;color:var(--dim);white-space:pre}.worktree-node .node-text{color:var(--dim)}.profile-node .node-text strong{color:var(--cyan);font-weight:600}.profile-node{margin-top:9px;border-top:1px solid var(--line)!important;padding-top:7px!important}.node-stats{font-size:10px;color:var(--dim);text-align:right;white-space:nowrap}.warn{color:var(--yellow)}.bad{color:var(--red)}.working{color:var(--green)}.blocked,.unknown{color:var(--yellow)}.selected{background:#8bddd114!important;box-shadow:inset 2px 0 var(--cyan)}.breadcrumb{color:var(--dim);font-size:10px;overflow-wrap:anywhere;margin:14px 0 8px}.details{border-top:1px solid var(--line);padding-top:12px;min-height:230px}.detail-title{color:var(--cyan);font-weight:500;margin-bottom:8px;overflow-wrap:anywhere}.fields{display:grid;grid-template-columns:115px minmax(0,1fr);gap:3px 12px;margin:0}.fields dt{color:var(--dim)}.fields dd{margin:0;overflow-wrap:anywhere}.notice{color:var(--yellow);margin-top:10px}.mounts{color:var(--dim);overflow-wrap:anywhere;margin-top:10px}.help{margin-top:15px;padding-top:10px;border-top:1px solid var(--line);color:var(--dim);font-size:10px}.split{display:grid;grid-template-columns:minmax(270px,.85fr) minmax(0,1.5fr);gap:18px}.split .tree{max-height:650px;border-right:1px solid var(--line);padding-right:12px}.split .tree-row.branch{display:block}.split .node-stats{display:block;text-align:left;padding-left:calc(var(--depth)*18px + 25px);margin-top:0}.pane-label{font-size:10px;color:var(--dim);margin-bottom:10px}.pane-label.active{color:var(--cyan)}.vm-table{max-height:220px;overflow:auto}.vm-row,.vm-table .columns{grid-template-columns:minmax(110px,1fr) 70px 100px 80px}.vm-row small{display:block;color:var(--dim);font-size:9px}.profile-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:13px}.terminal .profile-tab{border:1px solid var(--line);padding:7px 12px}.profile-tab[aria-pressed=true]{border-color:var(--cyan);color:var(--cyan)}.profile-tab small{display:block;color:var(--dim);font-size:10px}.empty{text-align:center;padding:72px 14px;color:var(--dim)}.empty strong{display:block;color:var(--ink);margin-bottom:8px;font-weight:500}.caption{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin:25px 3px 42px}.caption p{font-size:14px;color:var(--muted-foreground)}.badge{display:inline-block;font:10px var(--font-mono);color:var(--primary);background:var(--muted);padding:3px 7px;margin-bottom:8px}.comparison{overflow:auto;margin-top:18px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:12px;border-bottom:1px solid var(--border);vertical-align:top}th{font:10px var(--font-mono);color:var(--muted-foreground)}td:first-child{font-weight:600;white-space:nowrap}.rules{border-top:1px solid var(--border);margin-top:36px;padding-top:26px}.rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:20px}.rules p,.footnote{font-size:13px;color:var(--muted-foreground)}.footnote{margin-top:24px}.terminal.compact .tree-row:not(.branch),.terminal.compact .columns{grid-template-columns:minmax(160px,1fr) 70px 100px 80px}.terminal.compact .uptime{display:none}.terminal.compact .split{grid-template-columns:minmax(220px,1fr) minmax(0,1.3fr);gap:12px}.terminal.compact .vm-row,.terminal.compact .vm-table .columns{grid-template-columns:minmax(95px,1fr) 95px 76px}.terminal.compact .vm-row .agent,.terminal.compact .vm-table .agent{display:none}body.dark{color-scheme:dark;--background:oklch(.18 .015 260);--foreground:oklch(.93 .01 260);--card:oklch(.22 .015 260);--primary:oklch(.78 .14 280);--muted:oklch(.27 .015 260);--muted-foreground:oklch(.75 .025 260);--border:oklch(.36 .015 260)}[hidden]{display:none!important}
+@media(max-width:900px){.options{grid-template-columns:1fr}.option{padding:12px 16px}.option[aria-pressed=true]{padding:11px 15px}.option strong{display:inline;margin-left:12px}.option small{margin-top:6px}.caption{gap:20px}.tree-row:not(.branch),.columns{grid-template-columns:minmax(160px,1fr) 70px 100px 80px}.uptime{display:none}.split,.terminal.compact .split{grid-template-columns:240px minmax(0,1fr)}.vm-row,.vm-table .columns{grid-template-columns:minmax(95px,1fr) 95px 76px}.vm-row .agent,.vm-table .agent{display:none}}
+@media(max-width:650px){main{padding:28px 12px 40px}.caption,.rules-grid{grid-template-columns:1fr}.screen{padding:12px}.chrome{padding:8px 12px}.terminal{font-size:11px}.split,.terminal.compact .split{display:block}.split .tree{max-height:240px;border-right:0;border-bottom:1px solid var(--line);padding:0;margin-bottom:14px}.tree{max-height:390px}.tree-row:not(.branch),.columns,.terminal.compact .tree-row:not(.branch),.terminal.compact .columns{grid-template-columns:minmax(100px,1fr) 88px 72px;gap:3px}.agent,.uptime{display:none}.node-main{padding-left:calc(var(--depth)*10px);gap:4px}.node-stats{font-size:9px;white-space:normal;max-width:106px}.connector{width:16px}.fields{grid-template-columns:85px minmax(0,1fr);gap:3px 7px}.split .node-stats{max-width:none;padding-left:calc(var(--depth)*10px + 20px)}.vm-row,.vm-table .columns,.terminal.compact .vm-row,.terminal.compact .vm-table .columns{grid-template-columns:minmax(95px,1fr) 88px 72px}.profile-tabs{gap:5px}.terminal .profile-tab{padding:5px 8px}}
+</style>
+</head>
+<body>
+<main>
+<header><div class="eyebrow">agentnook / watch / Layoutstudie 03</div><h1>Ein Platz für jedes Profil.<br>Ein Ast für jeden Worktree.</h1><p class="intro">Drei reduzierte Entwürfe für dieselbe Hierarchie: Profil → Projekt → Worktree → Instanz. Baum immer vollständig aufgeklappt. Eine Zeile pro Knoten; Pfade und technische Details nur im Detailbereich.</p><div class="brief"><strong>Ziel:</strong> Privat und Arbeit trennen, zusammengehörige Worktrees erkennen, blockierte Agenten direkt erkennen. Keine klappbaren Gruppen, keine Auf/Zu-Bedienung. Nur Vorschau, kein Zugriff auf VMs.</div></header>
+<nav class="options" aria-label="Layout-Vorschläge"><button class="option" data-layout="tree" aria-pressed="false"><span class="eyebrow">A · Gesamtübersicht</span><strong>Ein gemeinsamer Baum</strong><small>Alle Profile und Projekte sichtbar. Instanzen im Baum, Details darunter.</small></button><button class="option" data-layout="split" aria-pressed="true"><span class="eyebrow">B · Gewählt</span><strong>Navigator + Inspektor</strong><small>Hierarchie links. Gefilterte Instanzen und Details rechts.</small></button><button class="option" data-layout="profiles" aria-pressed="false"><span class="eyebrow">C · Weniger Einrückung</span><strong>Profilwahl + Projektbaum</strong><small>Profil oben wählen, darunter nur dessen Projekte und Worktrees.</small></button></nav>
+<div class="controls"><div><span class="control-label">Daten</span><button class="pill" data-scenario="normal" aria-pressed="true">Normal</button><button class="pill" data-scenario="stale" aria-pressed="false">Heartbeat fehlt</button><button class="pill" data-scenario="empty" aria-pressed="false">Leer</button></div><div><span class="control-label">Breite</span><button class="pill" data-width="wide" aria-pressed="true">Breit</button><button class="pill" data-width="compact" aria-pressed="false">Kompakt</button></div><button id="theme" class="pill" aria-pressed="false">Dunkle Seite</button></div>
+<div class="terminal-wrap"><section id="terminal" class="terminal" tabindex="0" aria-label="Interaktiver Hierarchie-Prototyp"><div class="chrome"><span>$ nook watch</span><span>MOCK / READ ONLY</span></div><div class="screen"><div class="brand">agentnook fleet</div><div class="dim scope">All projects · AGENTNOOK_HOME: /Users/demo/.agentnook</div><div id="summary" class="summary" aria-live="polite"></div><div id="content"></div><div id="help" class="help"></div></div></section></div>
+<div class="caption"><div><span id="badge" class="badge"></span><h2 id="title"></h2><p id="description"></p></div><div><h3>Abwägung</h3><p id="tradeoff"></p><p style="margin-top:10px"><strong>Ausprobieren:</strong> Profil, Worktree oder VM auswählen. Der Baum bleibt bei Klick, Enter und Pfeiltasten vollständig offen. „agentnook“ existiert unter zwei Profilen und zusätzlich als unabhängiges Repository.</p></div></div>
+<section><div class="eyebrow">Entscheidungshilfe</div><h2>Ein Datenmodell, drei Arbeitsweisen</h2><div class="comparison"><table><thead><tr><th>LAYOUT</th><th>STÄRKE</th><th>GRENZE</th><th>NAVIGATION</th></tr></thead><tbody><tr><td>A · Gemeinsamer Baum</td><td>Globaler Überblick; eine Auswahl, ein Detailbereich</td><td>Mehr Einrückung und Scrollen</td><td>↑↓ wählen · ← Eltern · → Kind</td></tr><tr><td>B · Navigator + Inspektor</td><td>Profil, Projekt oder Worktree als Instanzfilter</td><td>Zwei Fokusbereiche; braucht Breite</td><td>Tab Bereich wechseln · ↑↓ wählen</td></tr><tr><td>C · Profilwahl + Baum</td><td>Weniger Baumtiefe, mehr Platz für Projektnamen</td><td>Andere Profile nur als Zähler sichtbar</td><td>[ / ] Profil wechseln · ↑↓ wählen</td></tr></tbody></table></div></section>
+<section class="rules"><div class="eyebrow">Semantik vor Optik</div><h2>Was der Baum wirklich bedeutet</h2><div class="rules-grid"><div><h3>Profil ist oberste Trennung</h3><p>Ein Repository unter „privat“ und „arbeit“ erscheint zweimal. Jede VM zählt genau einmal. Gruppen zeigen VM-Anzahl sowie blocked- und unknown-Zähler, keinen vermischten Gesamtstatus.</p></div><div><h3>Worktree-Zugehörigkeit kommt von Git</h3><p>Vorgabe für Umsetzung: Git-Metadaten identifizieren Repository und Hauptcheckout; Worktree-Pfade dürfen außerhalb liegen. Branch ist nur Label, nicht Identität. Hier sind diese Beziehungen erfundene Beispieldaten.</p></div><div><h3>Hauptcheckout ohne VM bleibt sichtbar</h3><p>„storefront“ hat nur aktive Worktree-Instanzen. Projekt bleibt als Elternknoten stehen; Hinweis „0 VM im Hauptcheckout“ erscheint bei Auswahl im Detailbereich. Ordner ohne Git bleiben eigenständige Projektgruppen.</p></div><div><h3>Unbekannt heißt nicht beendet</h3><p>VM-Status und Agent-Aktivität bleiben getrennt. Fehlende frische Telemetrie setzt Aktivität und Laufzeit auf unknown. Git-Erkennungsfehler sollen später auf exakte Ordnergruppen zurückfallen, nie Instanzen verstecken.</p></div><div><h3>Kein Umbau der Startkonfiguration</h3><p>Projekt- und Worktree-Pfade bleiben exakte Workspace-Identitäten. Gruppierung verändert weder Mounts noch Profile noch Startverhalten. Unterordner eines Checkouts müssten später separat gekennzeichnet bleiben.</p></div><div><h3>Stabile Auswahl bei Aktualisierung</h3><p>Vorgabe für Umsetzung: VM-Identität und Scrollposition behalten. Baum bleibt immer vollständig geöffnet. Neue VMs stehlen keinen Fokus. Endet ausgewählte VM, nächste Instanz im selben Workspace wählen, sonst Elternknoten mit Hinweis.</p></div></div></section>
+<p class="footnote">Selbstständige HTML-Prototypen, keine neuen CLI-Flags oder implementierten TUI-Funktionen. Fester Snapshot, keine echte Git-Erkennung und kein Polling. CPU/RAM = Limits; Version = Imagekatalog. Frühere Entwürfe: <a href="fleet-watch-projects.html">Projektlayouts ohne Profilhierarchie</a>.</p>
+</main>
+<script>
+'use strict';
+const repos = [
+ {id:'nook',label:'agentnook',path:'/Users/demo/code/github/agentnook',git:true},
+ {id:'shop',label:'storefront',path:'/Users/demo/code/work/storefront',git:true},
+ {id:'lab',label:'agentnook · experiments',path:'/Users/demo/code/experiments/agentnook',git:true},
+ {id:'notes',label:'Notizen',path:'/Users/demo/Documents/Notizen',git:false}
+];
+const workspaces = [
+ {id:'nook-main',repo:'nook',path:repos[0].path,branch:'main',main:true},
+ {id:'nook-watch',repo:'nook',path:'/Users/demo/worktrees/nook-watch',branch:'feat/watch'},
+ {id:'shop-login',repo:'shop',path:'/Users/demo/worktrees/shop-login',branch:'fix/login'},
+ {id:'lab-main',repo:'lab',path:repos[2].path,branch:'main',main:true},
+ {id:'notes-main',repo:'notes',path:repos[3].path,main:true}
+];
+const baseVMs = [
+ {id:'a7f21c',profile:'privat',workspace:'nook-main',agent:'pi',vm:'running',activity:'working',uptime:'12m34s'},
+ {id:'b831de',profile:'privat',workspace:'nook-watch',agent:'claude',vm:'running',activity:'blocked',uptime:'38m02s'},
+ {id:'c9d402',profile:'privat',workspace:'nook-watch',agent:'pi',vm:'running',activity:'idle',uptime:'8m17s'},
+ {id:'e6a012',profile:'privat',workspace:'notes-main',agent:'pi',vm:'running',activity:'idle',uptime:'3m41s'},
+ {id:'f8d419',profile:'privat',workspace:'lab-main',agent:'pi',vm:'running',activity:'working',uptime:'2m08s'},
+ {id:'d2e790',profile:'arbeit',workspace:'shop-login',agent:'opencode',vm:'unreachable',activity:'unknown',uptime:'unknown'},
+ {id:'f1b706',profile:'arbeit',workspace:'nook-main',agent:'claude',vm:'running',activity:'blocked',uptime:'21m05s'}
+];
+const profiles = ['privat','arbeit'];
+const state = {layout:'split',scenario:'normal',width:'wide',profile:'privat',selected:'v:b831de',scope:'r:privat:nook',vm:'b831de',focus:'tree',ended:false};
+const descriptions = {
+ tree:{badge:'A · Gesamtübersicht',title:'Die ganze Fleet in einem Baum',description:'Ein vollständig offener Baum mit einer Zeile pro Profil, Projekt, Worktree und VM. Keine Klapp-Pfeile, Typ-Badges oder Pfadzeilen. Auswahl zeigt vollständige Pfade und Details darunter.',tradeoff:'Weniger Bedienung und kein versteckter Zustand. Alle Instanzen bleiben im Baum. Bei vielen VMs wird gescrollt statt eingeklappt.'},
+ split:{badge:'B · Gewählt',title:'Hierarchie als Filter, Instanzen als Arbeitsfläche',description:'Links immer offener, einzeiliger Navigator. Auswahl filtert rechts auf Profil, Projekt oder Worktree. Wiederholter Klick ändert nur Auswahl, nie Sichtbarkeit.',tradeoff:'Beste Trennung von Orientierung und Inspektion. Weniger Einrückung bei VM-Daten, dafür zwei Auswahlzustände. Auf schmalen Displays steht Navigator oberhalb statt links.'},
+ profiles:{badge:'C · Kompakter Fokus',title:'Profil wählen, Projektbaum flach halten',description:'Privat und Arbeit als Auswahlleiste oben. Darunter Projekte, Worktrees und VMs des aktiven Profils. VM- und Warnungszähler auf jedem Profil bleiben sichtbar; [ und ] wechseln Profil.',tradeoff:'Spart eine Einrückungsebene und reduziert visuelle Last. Kein direkter VM-Vergleich zwischen Profilen. Für globale Übersicht ist gemeinsamer Baum A stärker.'}
+};
+const $ = id => document.getElementById(id);
+const esc = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const data = () => state.scenario === 'empty' ? [] : baseVMs.map(v=>state.scenario === 'stale' ? {...v,activity:'unknown',uptime:'unknown'} : v);
+const ws = id => workspaces.find(w=>w.id === id);
+const repo = id => repos.find(r=>r.id === id);
+function counts(items) { return `${items.length} VM · ${items.filter(v=>v.activity === 'blocked').length} blocked · ${items.filter(v=>v.activity === 'unknown').length} unknown`; }
+function buildTree() {
+ return profiles.map(profile=>({id:'p:'+profile,type:'profile',label:profile,profile,children:repos.map(r=>{
+  const matches = data().filter(v=>v.profile === profile && ws(v.workspace).repo === r.id);
+  if (!matches.length) return null;
+  const mainVMs = matches.filter(v=>ws(v.workspace).main);
+  const asVM = v=>({id:'v:'+v.id,type:'vm',label:v.id,profile,repo:r.id,workspace:v.workspace,value:v,children:[]});
+  return {id:`r:${profile}:${r.id}`,type:'repo',label:r.label,profile,repo:r.id,path:r.path,git:r.git,mainCount:mainVMs.length,children:[...mainVMs.map(asVM),...workspaces.filter(w=>w.repo === r.id && !w.main).map(w=>{
+   const children = matches.filter(v=>v.workspace === w.id).map(asVM);
+   return children.length ? {id:`w:${profile}:${w.id}`,type:'worktree',label:w.branch,profile,repo:r.id,workspace:w.id,path:w.path,children} : null;
+  }).filter(Boolean)]};
+ }).filter(Boolean)})).filter(p=>p.children.length);
+}
+function flatten(nodes,parent=null,depth=0) { return nodes.flatMap(node=>[{...node,parent,depth},...flatten(node.children,node.id,depth+1)]); }
+function allNodes() { return flatten(buildTree()); }
+function nodeById(id) { return allNodes().find(n=>n.id === id); }
+function descendants(node) { return node.type === 'vm' ? [node.value] : node.children.flatMap(descendants); }
+function visibleNodes() {
+ let roots = buildTree();
+ if (state.layout === 'profiles') roots = roots.find(p=>p.profile === state.profile)?.children ?? [];
+ const result=[];
+ function visit(nodes,parent=null,depth=0) {
+  const visible = nodes.filter(n=>state.layout !== 'split' || n.type !== 'vm');
+  visible.forEach((n,index)=>{
+   result.push({...n,parent,depth,last:index === visible.length-1});
+   visit(n.children,n.id,depth+1);
+  });
+ }
+ visit(roots); return result;
+}
+function statsHTML(items) {
+ const blocked=items.filter(v=>v.activity === 'blocked').length;
+ const unknown=items.filter(v=>v.activity === 'unknown').length;
+ const parts=[`${items.length} VM`,...(blocked?[`${blocked} blocked`]:[]),...(unknown?[`${unknown} unknown`]:[])];
+ return `<span class="node-stats ${blocked||unknown?'warn':''}">${parts.join(' · ')}</span>`;
+}
+function treeHTML() {
+ const header = state.layout === 'split' ? '' : '<div class="columns"><span>INSTANZEN</span><span class="agent">AGENT</span><span>VM STATUS</span><span>ACTIVITY</span><span class="uptime">UPTIME</span></div>';
+ return header + '<div class="tree" aria-label="Hierarchie">'+visibleNodes().map(n=>{
+  const selected = (state.layout === 'split' ? state.scope : state.selected) === n.id;
+  if(n.type === 'vm') return `<button class="tree-row ${selected?'selected':''}" data-node="${esc(n.id)}" aria-pressed="${selected}" style="--depth:${n.depth}"><span class="node-main"><span class="connector" aria-hidden="true">${n.last?'└─':'├─'}</span><span>${n.value.id}</span></span><span class="agent">${n.value.agent}</span><span class="${n.value.vm === 'unreachable'?'bad':''}">${n.value.vm}</span><span class="${n.value.activity}">${n.value.activity}</span><span class="uptime">${n.value.uptime}</span></button>`;
+  return `<button class="tree-row branch ${n.type === 'profile'?'profile-node':n.type === 'worktree'?'worktree-node':''} ${selected?'selected':''}" data-node="${esc(n.id)}" aria-pressed="${selected}" aria-label="${esc(n.label+', '+counts(descendants(n)))}" style="--depth:${n.depth}"><span class="node-main">${n.depth?`<span class="connector" aria-hidden="true">${n.last?'└─':'├─'}</span>`:''}<span class="node-text"><strong>${esc(n.label)}</strong></span></span>${statsHTML(descendants(n))}</button>`;
+ }).join('')+'</div>';
+}
+function detailHTML(node) {
+ if(!node) return '';
+ const items = descendants(node);
+ if(node.type !== 'vm') return `<div class="detail-title">${node.type === 'profile'?'Profile':node.type === 'repo'?'Project':'Worktree'} · ${esc(node.label)}</div><dl class="fields"><dt>Profile</dt><dd>${esc(node.profile)}</dd>${node.path?`<dt>Path</dt><dd>${esc(node.path)}</dd>`:''}<dt>Instances</dt><dd>${counts(items)}</dd><dt>VM states</dt><dd>${['running','unreachable','frozen'].map(s=>`${items.filter(v=>v.vm === s).length} ${s}`).join(' · ')}</dd><dt>Agent states</dt><dd>${['working','idle','blocked','unknown'].map(s=>`${items.filter(v=>v.activity === s).length} ${s}`).join(' · ')}</dd></dl><div class="dim" style="margin-top:12px">${node.type === 'repo' && !node.mainCount && node.git?'Hauptcheckout ohne aktive VM. Projekt bleibt Elternknoten aktiver Worktrees.':node.type === 'repo' && !node.git?'Eigenständiger Ordner, keine Worktree-Zuordnung.':'Zähler umfassen alle untergeordneten Instanzen dieses Profils.'}</div>`;
+ const v=node.value,w=ws(v.workspace),r=repo(w.repo);
+ const version = v.agent === 'pi'?'1.4.0':v.agent === 'claude'?'2.1.99':'2.3.2';
+ return `<div class="detail-title">Machine · nook-run-${v.id}</div><dl class="fields"><dt>Profile</dt><dd>${v.profile}</dd><dt>Project</dt><dd>${esc(r.path)}</dd><dt>Workspace</dt><dd>${esc(w.path)}</dd><dt>Checkout</dt><dd>${!r.git?'Ordner ohne Git':w.main?'Hauptcheckout · '+esc(w.branch):'Worktree · '+esc(w.branch)}</dd><dt>Agent</dt><dd>${v.agent} · ${version} (Imagekatalog)</dd><dt>VM / Activity</dt><dd>${v.vm} / ${v.activity}</dd><dt>Runtime</dt><dd>${v.uptime} · Agent-Laufzeit</dd><dt>Heartbeat</dt><dd>${v.activity === 'unknown'?'vor 18s · stale':'vor 1s'} · host-observed</dd><dt>CPU / RAM</dt><dd>2 vCPU / 2 GiB · Limits, keine Auslastung</dd></dl>${v.activity === 'blocked'?'<div class="notice">Agent meldet blocked: wartet auf Eingabe oder Freigabe.</div>':v.activity === 'unknown'?'<div class="notice">Kein frischer Agent-Report. Aktivität und Laufzeit unbekannt; VM-Status separat.</div>':''}<div class="mounts">Mounts · ${esc(w.path)} → /workspace [rw]<br>/Users/demo/.agentnook/profiles/${v.profile}/${v.agent} → /root [rw]<br>/tmp/agentnook-telemetry-&lt;run-id&gt; → /run/agentnook-telemetry [rw]</div>`;
+}
+function breadcrumb(node) { if(!node) return ''; return [node.profile,node.repo?repo(node.repo).label:null,node.workspace?(ws(node.workspace).main?'Hauptcheckout':ws(node.workspace).branch):null,node.type === 'vm'?node.value.id:null].filter(Boolean).map(esc).join(' / '); }
+function scopedVMs() { const scope=nodeById(state.scope); return scope?descendants(scope):[]; }
+function selectNode(id) {
+ const n=nodeById(id); if(!n) return;
+ state.profile=n.profile;
+ if(state.layout === 'split') { state.scope=id; const items=descendants(n); if(!items.some(v=>v.id === state.vm)) state.vm=items[0]?.id; state.focus='tree'; }
+ else { state.selected=id; if(n.type === 'vm') {state.vm=n.value.id;state.scope=n.parent;} }
+}
+function render() {
+ $('terminal').classList.toggle('compact',state.width === 'compact');
+ $('summary').textContent = `${buildTree().length} Profile · ${counts(data())} · Snapshot 14:44:08 (simuliert)`;
+ for(const key of ['layout','scenario','width']) document.querySelectorAll(`[data-${key}]`).forEach(b=>b.setAttribute('aria-pressed',String(b.dataset[key] === state[key])));
+ const info=descriptions[state.layout]; for(const key of ['badge','title','description','tradeoff']) $(key).textContent=info[key];
+ $('help').textContent=state.layout === 'split'?'Tab Baum / Instanzen · ↑↓ Auswahl · q nur Watch beenden':state.layout === 'profiles'?'[ / ] Profil · ↑↓ Auswahl · ← Eltern · → Kind · q nur Watch beenden':'↑↓ / jk Auswahl · ← Eltern · → Kind · q nur Watch beenden';
+ if(state.ended) { $('content').innerHTML='<div class="empty"><strong>Watch beendet · nur Simulation</strong>Keine VM gestoppt. Layout- oder Szenario-Button startet Vorschau erneut.</div>';return; }
+ if(!data().length) { $('content').innerHTML='<div class="empty"><strong>Keine aktiven Agent-VMs in diesem Datenpfad.</strong>Keine leeren Profil- oder Projektgruppen.<br>Watch wartet weiter. „nook“ mit diesem AGENTNOOK_HOME starten.</div>';return; }
+ if(state.layout === 'split') {
+  const scope=nodeById(state.scope),items=scopedVMs();
+  const vmNode=nodeById('v:'+state.vm);
+  $('content').innerHTML=`<div class="split"><div><div class="pane-label ${state.focus === 'tree'?'active':''}">NAVIGATOR ${state.focus === 'tree'?'◂ FOCUS':''}</div>${treeHTML()}</div><div><div class="pane-label ${state.focus === 'vms'?'active':''}">INSTANCES ${state.focus === 'vms'?'◂ FOCUS':''} · ${items.length} VM</div><div class="dim">Filter: ${esc(scope?.label??'')} · inklusive Untergruppen</div><div class="vm-table"><div class="columns"><span>INSTANCE / CHECKOUT</span><span class="agent">AGENT</span><span>VM STATUS</span><span>ACTIVITY</span></div>${items.map(v=>`<button class="vm-row ${v.id === state.vm?'selected':''}" data-vm="${v.id}" aria-pressed="${v.id === state.vm}"><span>${v.id}<small>${esc(ws(v.workspace).main?'Hauptcheckout':ws(v.workspace).branch)}</small></span><span class="agent">${v.agent}</span><span class="${v.vm === 'unreachable'?'bad':''}">${v.vm}</span><span class="${v.activity}">${v.activity}</span></button>`).join('')}</div><div class="breadcrumb">${breadcrumb(vmNode)}</div><div class="details">${detailHTML(vmNode??scope)}</div></div></div>`;
+ } else {
+  const tabs=state.layout === 'profiles'?'<div class="profile-tabs" aria-label="Profilwahl">'+buildTree().map(p=>`<button class="profile-tab" data-profile="${p.profile}" aria-pressed="${p.profile === state.profile}">${p.label}<small>${counts(descendants(p))}</small></button>`).join('')+'</div>':'';
+  const n=nodeById(state.selected);
+  $('content').innerHTML=tabs+treeHTML()+`<div class="breadcrumb">${breadcrumb(n)}</div><div class="details">${detailHTML(n)}</div>`;
+ }
+}
+function focusCurrent() {
+ const selector=state.layout === 'split' && state.focus === 'vms'?`[data-vm="${state.vm}"]`:`[data-node="${state.layout === 'split'?state.scope:state.selected}"]`;
+ const target=$('content').querySelector(selector); target?.focus({preventScroll:true});target?.scrollIntoView({block:'nearest'});
+}
+function selectProfile(profile) { state.profile=profile; state.selected=buildTree().find(p=>p.profile === profile)?.children[0]?.id; render();focusCurrent(); }
+function changeLayout(layout) {
+ state.layout=layout;state.focus='tree';state.ended=false;
+ if(layout === 'split') {
+  const n=nodeById(state.selected);state.scope=n?.type === 'vm'?n.parent:n?.id??'p:'+state.profile;
+  const items=scopedVMs();if(!items.some(v=>v.id === state.vm)) state.vm=items[0]?.id;
+ } else if(layout === 'profiles' && nodeById(state.selected)?.type === 'profile') state.selected=buildTree().find(p=>p.profile === state.profile)?.children[0]?.id;
+ render();
+}
+for(const key of ['layout','scenario','width']) document.querySelectorAll(`[data-${key}]`).forEach(button=>button.addEventListener('click',()=>{
+ if(key === 'layout') {changeLayout(button.dataset[key]);return;}
+ state[key]=button.dataset[key];state.ended=false;render();
+}));
+$('theme').addEventListener('click',()=>{ const dark=document.body.classList.toggle('dark');$('theme').setAttribute('aria-pressed',String(dark));$('theme').textContent=dark?'Helle Seite':'Dunkle Seite'; });
+$('content').addEventListener('click',event=>{
+ const button=event.target.closest('button');if(!button)return;
+ if(button.dataset.profile) {selectProfile(button.dataset.profile);return;}
+ if(button.dataset.vm) {state.vm=button.dataset.vm;state.focus='vms';render();focusCurrent();return;}
+ if(button.dataset.node) {
+  selectNode(button.dataset.node);
+  render();focusCurrent();
+ }
+});
+$('terminal').addEventListener('keydown',event=>{
+ if(event.ctrlKey||event.metaKey||event.altKey)return;
+ if(event.key === 'q') {state.ended=true;render();$('terminal').focus({preventScroll:true});return;}
+ if(state.ended||!data().length)return;
+ if(state.layout === 'profiles' && ['[',']'].includes(event.key)) {event.preventDefault();const ps=buildTree().map(p=>p.profile);selectProfile(ps[(ps.indexOf(state.profile)+(event.key === ']'?1:-1)+ps.length)%ps.length]);return;}
+ if(state.layout === 'split' && event.key === 'Tab') {event.preventDefault();state.focus=state.focus === 'tree'?'vms':'tree';render();focusCurrent();return;}
+ if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','j','k','Enter',' '].includes(event.key))return;
+ event.preventDefault();
+ const delta=['ArrowUp','k'].includes(event.key)?-1:1;
+ if(state.layout === 'split' && state.focus === 'vms') {
+  if(['ArrowUp','ArrowDown','j','k'].includes(event.key)) {const items=scopedVMs();state.vm=items[Math.max(0,Math.min(items.length-1,items.findIndex(v=>v.id === state.vm)+delta))]?.id;render();focusCurrent();} return;
+ }
+ const id=state.layout === 'split'?state.scope:state.selected,n=nodeById(id),visible=visibleNodes();if(!n)return;
+ if(['ArrowUp','ArrowDown','j','k'].includes(event.key)) {
+  const next=visible[Math.max(0,Math.min(visible.length-1,visible.findIndex(v=>v.id === id)+delta))];if(next)selectNode(next.id);
+ } else if(event.key === 'ArrowLeft') {
+  const parent=visible.find(v=>v.id === id)?.parent;if(parent)selectNode(parent);
+ } else if(event.key === 'ArrowRight') {
+  const index=visible.findIndex(v=>v.id === id);if(visible[index+1]?.parent === id)selectNode(visible[index+1].id);
+ }
+ render();focusCurrent();
+});
+render();
+</script>
+</body>
+</html>

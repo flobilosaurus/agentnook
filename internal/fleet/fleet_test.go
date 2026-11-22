@@ -87,8 +87,8 @@ run-2      running (eph)     4  4096 MiB  1
 }
 
 type sourceFixture struct {
-	source              *Source
-	root, json, verbose string
+	source                       *Source
+	root, project, json, verbose string
 }
 
 func setupSource(t *testing.T) sourceFixture {
@@ -98,8 +98,8 @@ func setupSource(t *testing.T) sourceFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := sourceFixture{root: root, json: filepath.Join(root, "list.json"), verbose: filepath.Join(root, "verbose.txt")}
-	f.source = &Source{Agents: registry.All(), Binary: filepath.Join(root, "smolvm"), Project: filepath.Join(root, "project with spaces"), Paths: paths.Paths{Root: filepath.Join(root, "data")}}
+	f := sourceFixture{root: root, project: filepath.Join(root, "project with spaces"), json: filepath.Join(root, "list.json"), verbose: filepath.Join(root, "verbose.txt")}
+	f.source = &Source{Agents: registry.All(), Binary: filepath.Join(root, "smolvm"), Paths: paths.Paths{Root: filepath.Join(root, "data")}}
 	script := "#!/bin/sh\ncase \"$*\" in\n 'machine ls --json') /bin/cat '" + f.json + "';;\n 'machine ls --verbose') /bin/cat '" + f.verbose + "';;\n *) exit 99;;\nesac\n"
 	if err := os.WriteFile(f.source.Binary, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
@@ -125,13 +125,13 @@ func (f sourceFixture) mounts(name, project, home string) string {
 	return name + " running (eph) 2 2048 MiB 3\n  Mount: " + project + " -> /workspace\n  Mount: " + home + "/profiles/work/pi -> /root\n  Mount: /docs -> /mnt/docs (ro)\n  Env: TOKEN=secret\n"
 }
 
-func TestSourceExactWorkspaceHomeAndCatalogMetadata(t *testing.T) {
+func TestSourceAllWorkspacesHomeAndCatalogMetadata(t *testing.T) {
 	f := setupSource(t)
 	machines := []machine{}
 	verbose := "NAME STATE CPUS MEMORY MOUNTS\n"
 	for _, name := range []string{"run-2", "run-1", "child", "parent", "foreign", "ordinary"} {
 		machines = append(machines, machine{Name: name, State: "running", CPUs: 2, MemoryMiB: 2048, MountCount: 3, CreatedAt: 1731920000, Image: config.BaseImage, Labels: map[string]string{"agentnook.image": filepath.Join(f.root, "dev.smolmachine"), "agentnook.ephemeral": "true"}})
-		project, home := f.source.Project, f.source.Paths.Root
+		project, home := f.project, f.source.Paths.Root
 		switch name {
 		case "child":
 			project += "/child"
@@ -159,10 +159,10 @@ func TestSourceExactWorkspaceHomeAndCatalogMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := f.source.Load(context.Background())
-	if err != nil || len(got.Instances) != 2 {
+	if err != nil || len(got.Instances) != 4 {
 		t.Fatalf("%+v %v", got, err)
 	}
-	item := got.Instances[0]
+	item := got.Instances[2] // child, parent, run-1, run-2; other data homes excluded.
 	if item.Name != "run-1" || !item.Ephemeral || item.Image != options.Image || item.Profile != "work" || item.ImageName != "dev" || item.AgentVersion != "1.4.0" || item.BaseImage != "node:24-bookworm" || item.CPUs != 2 || item.MemoryMiB != 2048 || item.StorageGiB != nil || len(item.Mounts) != 3 || !item.Mounts[2].ReadOnly {
 		t.Fatalf("wrong snapshot: %+v", item)
 	}
@@ -171,7 +171,7 @@ func TestSourceExactWorkspaceHomeAndCatalogMetadata(t *testing.T) {
 func TestSourceReadOnlyUnknownMetadataErrorsAndRaces(t *testing.T) {
 	f := setupSource(t)
 	item := machine{Name: "run", State: "running", CPUs: 2, MemoryMiB: 2048, MountCount: 3}
-	f.store(t, []machine{item}, f.mounts("run", f.source.Project, f.source.Paths.Root))
+	f.store(t, []machine{item}, f.mounts("run", f.project, f.source.Paths.Root))
 	got, err := f.source.Load(context.Background())
 	if err != nil || len(got.Instances) != 1 || got.Instances[0].AgentVersion != "" {
 		t.Fatalf("%+v %v", got, err)
@@ -195,7 +195,7 @@ func TestSourceReadOnlyUnknownMetadataErrorsAndRaces(t *testing.T) {
 		t.Fatal("exit race", got, err)
 	}
 	item.MountCount = 4
-	f.store(t, []machine{item}, f.mounts("run", f.source.Project, f.source.Paths.Root))
+	f.store(t, []machine{item}, f.mounts("run", f.project, f.source.Paths.Root))
 	if _, err := f.source.Load(context.Background()); err == nil {
 		t.Fatal("mount mismatch accepted")
 	}
@@ -237,7 +237,7 @@ func TestSharedTelemetryDiscoveryIsolationStalenessAndCleanup(t *testing.T) {
 			count++
 		}
 		machines = append(machines, machine{Name: name, State: "running", CPUs: 2, MemoryMiB: 2048, MountCount: count})
-		verbose += f.mounts(name, f.source.Project, f.source.Paths.Root)
+		verbose += f.mounts(name, f.project, f.source.Paths.Root)
 		if i < 2 {
 			l := []*telemetry.Launch{first, second}[i]
 			verbose += "  Mount: " + l.Dir() + " -> " + telemetry.GuestDir + "\n"
@@ -298,7 +298,7 @@ func TestSharedTelemetryDiscoveryIsolationStalenessAndCleanup(t *testing.T) {
 	if byName(load(), "run-a").Activity.Fresh {
 		t.Fatal("foreign report accepted")
 	}
-	f.store(t, machines[2:], "NAME STATE CPUS MEMORY MOUNTS\n"+f.mounts("legacy", f.source.Project, f.source.Paths.Root))
+	f.store(t, machines[2:], "NAME STATE CPUS MEMORY MOUNTS\n"+f.mounts("legacy", f.project, f.source.Paths.Root))
 	if _, err := f.source.Load(context.Background()); err != nil {
 		t.Fatal(err)
 	}

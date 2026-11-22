@@ -26,7 +26,7 @@ func TestDiscoverAllAgentTypesFromIsolatedHomes(t *testing.T) {
 			t.Fatal(err)
 		}
 		machines = append(machines, machine{Name: agent, State: "running", CPUs: 2, MemoryMiB: 2048, MountCount: 3, Image: o.Image})
-		verbose += strings.ReplaceAll(f.mounts(agent, f.source.Project, f.source.Paths.Root), "/profiles/work/pi", "/profiles/work/"+agent)
+		verbose += strings.ReplaceAll(f.mounts(agent, f.project, f.source.Paths.Root), "/profiles/work/pi", "/profiles/work/"+agent)
 	}
 	if err := config.Save(f.source.Paths.ConfigFile(), cfg); err != nil {
 		t.Fatal(err)

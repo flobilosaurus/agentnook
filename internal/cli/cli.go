@@ -42,7 +42,7 @@ Options:
 Examples:
   nook                    Set up once, then start with the saved choices
   nook -- --continue      Pass arguments to your saved agent
-  nook watch              Watch running agents for this folder
+  nook watch              Watch all projects in this AGENTNOOK_HOME
 
 Requires smolvm >= 1.33.0; Docker is not needed.
 Agent logins stay in an isolated profile; host agent files are never imported.
