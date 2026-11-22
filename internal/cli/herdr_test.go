@@ -124,9 +124,10 @@ func TestHerdrSignalReleasesAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	vmScript := `#!/bin/sh
-if [ "$1" = --version ]; then printf "smolvm 1.33.0\n"; exit 0; fi
+if [ "$1" = --version ]; then printf "smolvm 1.36.1\n"; exit 0; fi
 case "$1 $2" in
-  "machine start"|"machine delete") exit 0 ;;
+  "machine data-dir") printf '%s\n' "$AGENTNOOK_HOME"; exit 0 ;;
+  "machine start"|"machine stop"|"machine delete") exit 0 ;;
 esac
 for arg in "$@"; do
   case "$arg" in

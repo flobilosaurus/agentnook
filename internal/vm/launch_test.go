@@ -16,7 +16,8 @@ func TestFindRequiresSupportedSmolvm(t *testing.T) {
 		version string
 		ok      bool
 	}{
-		{"smolvm 1.33.0", true}, {"smolvm 1.34.2", true}, {"smolvm 2.0.0", true},
+		{"smolvm 1.36.1", true}, {"smolvm 1.37.0", true}, {"smolvm 2.0.0", true},
+		{"smolvm 1.33.0", false}, {"smolvm 1.35.4", false}, {"smolvm 1.36.0", false},
 		{"smolvm 1.32.99", false}, {"smolvm 1.33.0-rc1", false}, {"", false},
 		{"something 99.0.0", false}, {"smolvm 2.-1.0", false},
 	} {
@@ -34,7 +35,7 @@ func TestFindRequiresSupportedSmolvm(t *testing.T) {
 			if tc.ok && binary != filepath.Join(dir, "smolvm") {
 				t.Fatal(binary)
 			}
-			if !tc.ok && !strings.Contains(err.Error(), "smolvm >= 1.33.0") {
+			if !tc.ok && !strings.Contains(err.Error(), "smolvm >= 1.36.1") {
 				t.Fatal(err)
 			}
 		})
@@ -74,7 +75,7 @@ exit 0
 				t.Fatal(err)
 			}
 			pass := []string{"pi", "--print", "spaces ; $(echo nope)", "--select"}
-			args := []string{"machine", "run", "--net", "--interactive", "--from", "/private/image.smolmachine", "--cpus", "3", "--mem", "4096", "--storage", "8", "--user", "root", "--workdir", "/workspace", "--env", "HOME=/root", "--volume", "/project with spaces:/workspace", "--volume", "/profile:/root", "--tty", "--"}
+			args := []string{"machine", "run", "--net", "--block-private", "--allow-private", "10.20.0.0/16", "--interactive", "--from", "/private/image.smolmachine", "--cpus", "3", "--mem", "4096", "--storage", "8", "--user", "root", "--workdir", "/workspace", "--env", "HOME=/root", "--volume", "/project with spaces:/workspace", "--volume", "/profile:/root", "--tty", "--"}
 			args = append(args, pass...)
 			var output bytes.Buffer
 			if got := Launch(binary, args, IO{Err: &output}); got != tc.want {
@@ -94,7 +95,7 @@ exit 0
 			execute, _ := os.ReadFile(log + ".exec")
 			created := strings.Split(strings.TrimSuffix(string(create), "\x00"), "\x00")
 			executed := strings.Split(strings.TrimSuffix(string(execute), "\x00"), "\x00")
-			for _, want := range []string{"agentnook.image=/private/image.smolmachine", "agentnook.ephemeral=true", "/project with spaces:/workspace", "/profile:/root", "--from"} {
+			for _, want := range []string{"agentnook.image=/private/image.smolmachine", "agentnook.ephemeral=true", "/project with spaces:/workspace", "/profile:/root", "--from", "--block-private", "10.20.0.0/16"} {
 				if !strings.Contains(string(create), want+"\x00") {
 					t.Fatal(created)
 				}
@@ -110,6 +111,70 @@ exit 0
 				t.Fatal("wrong cleanup target")
 			}
 		})
+	}
+}
+
+func TestFindMediatedRequiresVersionedProtocol(t *testing.T) {
+	for _, version := range []string{"1.33.0", "1.35.3", "1.35.4", "1.36.0", "1.36.1", "2.0.0"} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "smolvm"), []byte("#!/bin/sh\necho smolvm "+version+"\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", dir)
+		_, err := FindMediated()
+		want := version == "1.36.1" || version == "2.0.0"
+		if (err == nil) != want {
+			t.Fatal(version, err)
+		}
+	}
+}
+
+func TestLaunchMediationBindingIsHostOnlyAndRequired(t *testing.T) {
+	t.Setenv("SMOLVM_INTERCEPTOR_TOKEN", "")
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "smolvm")
+	log := filepath.Join(dir, "calls")
+	t.Setenv("VM_TEST_LOG", log)
+	script := `#!/bin/sh
+printf '%s\000' "$@" > "$VM_TEST_LOG.$2"
+printf '%s' "${SMOLVM_INTERCEPTOR_TOKEN:-}" > "$VM_TEST_LOG.$2.token"
+`
+	if err := os.WriteFile(binary, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"machine", "run", "--net", "--mediated-egress", "--from", "/image.smolmachine", "--", "agent"}
+	var output bytes.Buffer
+	if code := Launch(binary, args, IO{Err: &output}); code == 0 {
+		t.Fatal("missing broker failed open")
+	}
+	if _, err := os.Stat(log + ".create"); !os.IsNotExist(err) {
+		t.Fatal("VM created without broker")
+	}
+	token := strings.Repeat("ab", 32)
+	if code := Launch(binary, args, IO{Err: &output, Mediation: &Mediation{Address: "127.0.0.1:12345", Token: token}}); code != 0 {
+		t.Fatal(code, output.String())
+	}
+	for _, stage := range []string{"create", "start", "exec", "delete"} {
+		data, err := os.ReadFile(log + "." + stage)
+		if err != nil || bytes.Contains(data, []byte(token)) {
+			t.Fatal(stage, err, "token leaked into argv")
+		}
+		env, _ := os.ReadFile(log + "." + stage + ".token")
+		if stage == "start" {
+			if string(env) != token || !bytes.Contains(data, []byte("--mediated-egress\x00--egress-interceptor\x00127.0.0.1:12345\x00")) {
+				t.Fatal("missing start binding", string(data))
+			}
+		} else if len(env) != 0 || bytes.Contains(data, []byte("--mediated-egress")) {
+			t.Fatal("binding leaked into other lifecycle stages", stage)
+		}
+	}
+}
+
+func TestLaunchRejectsPrivateExceptionsUnderMediation(t *testing.T) {
+	args := []string{"machine", "run", "--net", "--block-private", "--mediated-egress", "--allow-private", "10.20.0.0/16", "--from", "/image.smolmachine", "--", "agent"}
+	var output bytes.Buffer
+	if code := Launch("/must-not-run", args, IO{Err: &output, Mediation: &Mediation{Address: "127.0.0.1:12345", Token: strings.Repeat("ab", 32)}}); code != 1 || !strings.Contains(output.String(), "bypass mediated approvals") {
+		t.Fatal(code, output.String())
 	}
 }
 

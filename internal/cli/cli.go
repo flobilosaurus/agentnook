@@ -14,6 +14,7 @@ import (
 	"github.com/flobilosaurus/agentnook/internal/agents"
 	"github.com/flobilosaurus/agentnook/internal/agents/registry"
 	"github.com/flobilosaurus/agentnook/internal/config"
+	"github.com/flobilosaurus/agentnook/internal/egress"
 	"github.com/flobilosaurus/agentnook/internal/herdr"
 	"github.com/flobilosaurus/agentnook/internal/images"
 	"github.com/flobilosaurus/agentnook/internal/paths"
@@ -26,6 +27,7 @@ var Version = "dev"
 
 const usage = `Usage: nook [-- AGENT_ARGS...]
        nook watch
+       nook network
 
 Run your coding agent in a fresh local VM.
 First run: choose an agent and profile; nook builds the image automatically.
@@ -35,6 +37,10 @@ Options:
   --select                Change this folder's saved setup
   --mount HOST:GUEST[:ro]  Add directory shares; repeat to replace the saved list
   --clear-mounts          Remove saved extra directory shares
+  --network ask|full      Save TCP approval mode (default: full); Host/LAN stays blocked
+  --allow-private CIDR    Replace saved private-network exceptions (repeatable; full only)
+  --clear-allow-private   Remove saved private-network exceptions
+  network                 Show persistent network history and live approvals
   --help-all              Show advanced agent, image and resource options
   -h, --help              Show help
   --version               Show launcher version
@@ -44,7 +50,7 @@ Examples:
   nook -- --continue      Pass arguments to your saved agent
   nook watch              Watch all projects in this AGENTNOOK_HOME
 
-Requires smolvm >= 1.33.0; Docker is not needed.
+Requires smolvm >= 1.36.1; Docker is not needed.
 Agent logins stay in an isolated profile; host agent files are never imported.
 `
 
@@ -68,7 +74,11 @@ Image management:
   nook images remove NAME
   nook images --help
 
-Agent, profile, image, resources and mounts are saved for the exact folder.
+Agent, profile, image, resources, mounts and network mode are saved for the exact folder.
+--network ask needs a separate nook network terminal.
+All work VMs block host/LAN, including saved folders. full skips TCP approvals only.
+--allow-private CIDR replaces the saved exception list; --clear-allow-private removes it.
+Private exceptions are allowed only with full, never with ask.
 Each agent keeps its own saved selection; profiles can contain multiple agents.
 Image defaults affect new selections, not an already configured folder.
 The optional "run" subcommand and all existing launch flags remain supported.
@@ -92,6 +102,7 @@ type App struct {
 	Interactive   func() bool
 	LatestVersion func(string) (string, error)
 	Watch         func(string, tui.FleetLoader) error
+	Network       func(string, tui.NetworkLoader, tui.NetworkDecider) error
 }
 
 func (a App) Run(args []string) int {
@@ -132,6 +143,8 @@ func (a App) Run(args []string) int {
 			return a.imageCommand(args[1:])
 		case "watch":
 			return a.watchCommand(args[1:])
+		case "network":
+			return a.networkCommand(args[1:])
 		case "run":
 			args = args[1:]
 		}
@@ -153,6 +166,10 @@ func (a App) Run(args []string) int {
 	var mountValues []string
 	fs.Func("mount", "extra HOST:GUEST[:ro]", func(s string) error { mountValues = append(mountValues, s); return nil })
 	clearMounts := fs.Bool("clear-mounts", false, "remove saved mounts")
+	network := fs.String("network", "", "TCP approval mode: ask or full")
+	var privateValues []string
+	fs.Func("allow-private", "private CIDR exception (full only)", func(s string) error { privateValues = append(privateValues, s); return nil })
+	clearPrivate := fs.Bool("clear-allow-private", false, "remove saved private CIDR exceptions")
 	dryRun := fs.Bool("dry-run", false, "print launch plan only")
 	version := fs.Bool("version", false, "launcher version")
 	launcherArgs, pass := args, []string(nil)
@@ -195,6 +212,21 @@ func (a App) Run(args []string) int {
 	}
 	if *clearMounts && set["mount"] {
 		return a.fail(2, errors.New("--mount and --clear-mounts cannot be combined"))
+	}
+	if *clearPrivate && set["allow-private"] {
+		return a.fail(2, errors.New("--allow-private and --clear-allow-private cannot be combined"))
+	}
+	privateCIDRs, err := config.NormalizePrivateCIDRs(privateValues)
+	if err != nil {
+		return a.fail(2, err)
+	}
+	if set["network"] {
+		if *network == "" {
+			return a.fail(2, errors.New("--network requires ask or full"))
+		}
+		if err := config.ValidateNetwork(*network); err != nil {
+			return a.fail(2, err)
+		}
 	}
 	if set["agent"] {
 		if _, err := a.Agents.Lookup(*agentFlag); err != nil {
@@ -271,6 +303,17 @@ func (a App) Run(args []string) int {
 	if err := p.ValidateMounts(selected.Mounts, a.Agents.ReservedPaths()...); err != nil {
 		return a.fail(2, err)
 	}
+	if set["network"] {
+		selected.Network = *network
+	}
+	if set["allow-private"] {
+		selected.AllowPrivate = privateCIDRs
+	} else if *clearPrivate {
+		selected.AllowPrivate = nil
+	}
+	if err := selected.ValidateNetwork(); err != nil {
+		return a.fail(2, err)
+	}
 	applyResources := func() {
 		if set["cpus"] {
 			selected.VM.CPUs = *cpus
@@ -295,7 +338,11 @@ func (a App) Run(args []string) int {
 	}
 	binary := "smolvm"
 	if !*dryRun {
-		binary, err = vm.Find()
+		if selected.Network == "ask" {
+			binary, err = vm.FindMediated()
+		} else {
+			binary, err = vm.Find()
+		}
 		if err != nil {
 			return a.fail(127, err)
 		}
@@ -393,6 +440,14 @@ func (a App) Run(args []string) int {
 		return a.fail(1, err)
 	}
 	vmArgs := vm.Args(project, p.AgentDir(selected.Profile, agent), selected.VM, adapter, a.Interactive(), pass, selected.Mounts...)
+	networkArgs := []string{"machine", "run"}
+	if selected.Network == "ask" {
+		networkArgs = append(networkArgs, "--mediated-egress")
+	}
+	for _, cidr := range selected.AllowPrivate {
+		networkArgs = append(networkArgs, "--allow-private", cidr)
+	}
+	vmArgs = append(networkArgs, vmArgs[2:]...)
 	if *dryRun {
 		data, err := json.MarshalIndent(append([]string{"smolvm"}, vmArgs...), "", "  ")
 		if err != nil {
@@ -436,6 +491,10 @@ func (a App) Run(args []string) int {
 		return a.fail(1, fmt.Errorf("save profile: %w", err))
 	}
 	fmt.Fprintf(a.Err, "nook: %s\nAgent: %s\nProfile: %s\n%s\n", project, agent, selected.Profile, images.Summary(selected.VM, cfg.Images, a.Agents))
+	fmt.Fprintln(a.Err, "Host/LAN: blocked (including host loopback, private networks and cloud metadata)")
+	for _, cidr := range selected.AllowPrivate {
+		fmt.Fprintf(a.Err, "Private-network exception: %s (all ports and transports; cloud metadata stays blocked)\n", cidr)
+	}
 	for _, mount := range selected.Mounts {
 		mode := "read-write"
 		if mount.ReadOnly {
@@ -457,7 +516,29 @@ func (a App) Run(args []string) int {
 			bridge.Start()
 		}
 	}
-	return a.Runner(binary, vmArgs, vm.IO{In: a.In, Out: a.Out, Err: a.Err})
+	streams := vm.IO{In: a.In, Out: a.Out, Err: a.Err}
+	historyInfo := egress.Info{Project: project, Profile: selected.Profile, Agent: agent}
+	if selected.Network == "ask" {
+		broker, err := egress.Start(p.Root, egress.Info{Project: project, Profile: selected.Profile, Agent: agent})
+		if err != nil {
+			return a.fail(1, fmt.Errorf("network broker: %w", err))
+		}
+		defer broker.Close()
+		streams.Mediation = &vm.Mediation{Address: broker.Address(), Token: broker.Token()}
+		historyInfo.Session = broker.Session()
+		fmt.Fprintln(a.Err, "Network: ask — run nook network in another terminal with the same AGENTNOOK_HOME (Tab: approvals); unanswered TCP connections are denied after 12s.")
+	}
+	mode := selected.Network
+	if mode == "" {
+		mode = "full"
+	}
+	streams.Observe = func(binary, machine string) (func(bool) error, error) {
+		return egress.ObserveVM(binary, machine, p.Root, historyInfo, mode)
+	}
+	if mode == "full" {
+		fmt.Fprintln(a.Err, "Network history: denials only; smolvm does not expose allowed traffic in full mode.")
+	}
+	return a.Runner(binary, vmArgs, streams)
 }
 func (a App) latestVersion(name string) (string, error) {
 	adapter, err := a.Agents.Lookup(name)

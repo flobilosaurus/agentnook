@@ -48,8 +48,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      SMOLVM_VERSION: "1.33.0"
-      SMOLVM_SHA256: 97e0c64d50abc407499802daa6c849ac010ef29d44e1d97664d8a78067927274
+      SMOLVM_VERSION: "1.36.1"
+      SMOLVM_SHA256: e024f313cb3546c5cb3a587235264e1fab7b2198b7c2b5a530f742d519c278a1
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -99,7 +99,7 @@ jobs:
           test "$("$install_dir/smolvm" --version)" = "smolvm $SMOLVM_VERSION"
           echo "$install_dir" >> "$GITHUB_PATH"
 
-      - name: Test real Pi, OpenCode and Claude VMs
+      - name: Test real agent VMs and network protection
         env:
           AGENTNOOK_HERDR: "0"
         run: mise run test:vm

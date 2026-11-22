@@ -16,7 +16,7 @@ import (
 
 func Args(project, agentDir string, options config.Options, adapter agents.Agent, tty bool, pass []string, mounts ...config.Mount) []string {
 	args := []string{
-		"machine", "run", "--net", "--interactive",
+		"machine", "run", "--net", "--block-private", "--interactive",
 		"--from", options.Image,
 		"--cpus", strconv.Itoa(options.CPUs),
 		"--mem", strconv.Itoa(options.Memory),
@@ -44,9 +44,19 @@ func Args(project, agentDir string, options config.Options, adapter agents.Agent
 	return append(args, adapter.Command(pass)...)
 }
 
+// Mediation is a host-only binding. Neither field is passed into the guest.
+type Mediation struct {
+	Address string
+	Token   string
+}
+
 type IO struct {
-	In       io.Reader
-	Out, Err io.Writer
+	In        io.Reader
+	Out, Err  io.Writer
+	Mediation *Mediation
+	// Observe attaches a host-side audit collector after create, before start.
+	// Its finalizer runs after stop and before delete; stopped confirms quiescence.
+	Observe func(binary, machine string) (func(stopped bool) error, error)
 }
 
 // Session handles signals across a multi-command lifecycle, including gaps
@@ -74,6 +84,10 @@ func Run(binary string, args []string, streams IO) int {
 	return s.Run(binary, args, streams)
 }
 func (s *Session) Run(binary string, args []string, streams IO) int {
+	return s.run(binary, args, streams, nil)
+}
+
+func (s *Session) run(binary string, args []string, streams IO, env []string) int {
 	if streams.Err == nil {
 		streams.Err = io.Discard
 	}
@@ -86,6 +100,9 @@ func (s *Session) Run(binary string, args []string, streams IO) int {
 		return signalCode(s.interrupted)
 	}
 	cmd := exec.Command(binary, args...)
+	if env != nil {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = streams.In, streams.Out, streams.Err
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintln(streams.Err, "nook: start smolvm:", err)

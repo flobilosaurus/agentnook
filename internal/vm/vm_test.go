@@ -35,7 +35,7 @@ func TestAgentArgs(t *testing.T) {
 				t.Fatal(got)
 			}
 			joined := strings.Join(got, "\n")
-			for _, value := range []string{"/repo with spaces:/workspace", "/data/profiles/work/" + agent + ":/root", "HOME=/root"} {
+			for _, value := range []string{"/repo with spaces:/workspace", "/data/profiles/work/" + agent + ":/root", "HOME=/root", "--block-private"} {
 				if !strings.Contains(joined, value) {
 					t.Fatal(got)
 				}

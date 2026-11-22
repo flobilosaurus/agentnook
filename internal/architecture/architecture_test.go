@@ -50,10 +50,10 @@ func TestPackageBoundaries(t *testing.T) {
 		"agents/pi":       {"agents"}, "agents/opencode": {"agents"}, "agents/claude": {"agents"},
 		"config": {"agents"}, "paths": {"agents", "config"},
 		"vm": {"agents", "config"}, "images": {"agents", "config", "paths", "vm"},
-		"telemetry": {"agents"}, "herdr": {"telemetry"},
+		"telemetry": {"agents"}, "herdr": {"telemetry"}, "egress": {},
 		"fleet": {"agents", "config", "paths", "telemetry"},
-		"tui":   {"agents", "config", "images", "fleet"},
-		"cli":   {"agents", "agents/registry", "config", "paths", "vm", "images", "telemetry", "herdr", "fleet", "tui"},
+		"tui":   {"agents", "config", "images", "fleet", "egress"},
+		"cli":   {"agents", "agents/registry", "config", "paths", "vm", "images", "telemetry", "herdr", "fleet", "tui", "egress"},
 	}
 	for _, p := range info.Packages {
 		if strings.HasPrefix(p.Path, module+"/internal/") && (len(p.PackageData.GoFiles) > 0 || len(p.PackageData.CgoFiles) > 0) {

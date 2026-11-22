@@ -49,9 +49,11 @@ func (r Resources) Validate() error {
 }
 
 type Project struct {
-	Profile string  `toml:"profile"`
-	VM      Options `toml:"vm"`
-	Mounts  []Mount `toml:"mounts,omitempty"`
+	Profile      string   `toml:"profile"`
+	VM           Options  `toml:"vm"`
+	Mounts       []Mount  `toml:"mounts,omitempty"`
+	Network      string   `toml:"network,omitempty"` // Empty/full skips approvals; all modes block private targets.
+	AllowPrivate []string `toml:"allow_private,omitempty"`
 }
 
 type Workspace struct {
@@ -119,6 +121,13 @@ func (o Options) Validate() error {
 	}
 	return o.Resources().Validate()
 }
+func ValidateNetwork(mode string) error {
+	if mode != "" && mode != "full" && mode != "ask" {
+		return fmt.Errorf("invalid network mode %q: use ask or full", mode)
+	}
+	return nil
+}
+
 func NormalizeProjectPath(path string) (string, error) {
 	if path == "" {
 		return "", errors.New("project path is empty")
@@ -254,6 +263,9 @@ func (c Config) Validate() error {
 				return fmt.Errorf("project %q refers to unknown profile %q", path, project.Profile)
 			}
 			if err := project.VM.Validate(); err != nil {
+				return fmt.Errorf("project %q: %w", path, err)
+			}
+			if err := project.ValidateNetwork(); err != nil {
 				return fmt.Errorf("project %q: %w", path, err)
 			}
 			if err := ValidateMounts(project.Mounts); err != nil {

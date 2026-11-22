@@ -28,7 +28,7 @@ run = "go test -count=1 ./internal/architecture"
 run = "go test -count=1 ./test/e2e/..."
 
 [tasks."test:vm"]
-run = "AGENTNOOK_VM_SMOKE=1 go test -count=1 -run '^TestReal(VM|OpenCodeVM|ClaudeVM)$' -timeout 25m -v ./test/e2e/..."
+run = "AGENTNOOK_VM_SMOKE=1 go test -count=1 -run '^TestReal(VM|OpenCodeVM|ClaudeVM|NetworkVM|PrivateNetworkVM)$' -timeout 25m -v ./test/e2e/..."
 
 [tasks.vet]
 run = "go vet ./..."

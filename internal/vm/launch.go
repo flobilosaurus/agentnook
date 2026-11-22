@@ -12,10 +12,16 @@ import (
 )
 
 // Find rejects unsupported runtimes before creating profiles or build storage.
-func Find() (string, error) {
+func Find() (string, error) { return findVersion(1, 36, 1) }
+
+// FindMediated requires the current protected runtime as well as SMOLMEG2.
+func FindMediated() (string, error) { return Find() }
+
+func findVersion(wantMajor, wantMinor, wantPatch int) (string, error) {
+	required := fmt.Sprintf("%d.%d.%d", wantMajor, wantMinor, wantPatch)
 	binary, err := exec.LookPath("smolvm")
 	if err != nil {
-		return "", fmt.Errorf("smolvm >= 1.33.0 is required: %w", err)
+		return "", fmt.Errorf("smolvm >= %s is required: %w", required, err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -27,12 +33,12 @@ func Find() (string, error) {
 			major, e1 := strconv.Atoi(version[0])
 			minor, e2 := strconv.Atoi(version[1])
 			patch, e3 := strconv.Atoi(version[2])
-			if e1 == nil && e2 == nil && e3 == nil && patch >= 0 && minor >= 0 && (major > 1 || major == 1 && minor >= 33) {
+			if e1 == nil && e2 == nil && e3 == nil && patch >= 0 && minor >= 0 && (major > wantMajor || major == wantMajor && (minor > wantMinor || minor == wantMinor && patch >= wantPatch)) {
 				return binary, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("smolvm >= 1.33.0 is required; update smolvm (reported %q)", strings.TrimSpace(string(output)))
+	return "", fmt.Errorf("smolvm >= %s is required; update smolvm (reported %q)", required, strings.TrimSpace(string(output)))
 }
 
 // Launch realizes Args as a disposable named machine. Unlike pack-run in smolvm
@@ -51,6 +57,8 @@ func Launch(binary string, args []string, streams IO) (code int) {
 	create := []string{"machine", "create", "--name", name}
 	execute := []string{"machine", "exec", "--name", name}
 	source := ""
+	mediated := false
+	privateExceptions := false
 	split := -1
 	for i := 2; i < len(args); i++ {
 		arg := args[i]
@@ -62,7 +70,11 @@ func Launch(binary string, args []string, streams IO) (code int) {
 			execute = append(execute, arg)
 			continue
 		}
-		if arg == "--net" {
+		if arg == "--mediated-egress" {
+			mediated = true
+			continue
+		}
+		if arg == "--net" || arg == "--block-private" {
 			create = append(create, arg)
 			continue
 		}
@@ -71,6 +83,9 @@ func Launch(binary string, args []string, streams IO) (code int) {
 			return 1
 		}
 		value := args[i+1]
+		if arg == "--allow-private" {
+			privateExceptions = true
+		}
 		i++
 		create = append(create, arg, value)
 		if arg == "--from" {
@@ -85,12 +100,40 @@ func Launch(binary string, args []string, streams IO) (code int) {
 		fmt.Fprintln(streams.Err, "nook: missing artifact or agent command")
 		return 1
 	}
+	start := []string{"machine", "start", "--name", name}
+	var startEnv []string
+	if mediated {
+		if privateExceptions {
+			fmt.Fprintln(streams.Err, "nook: private-network exceptions would bypass mediated approvals; refusing launch")
+			return 1
+		}
+		if streams.Mediation == nil || streams.Mediation.Address == "" || streams.Mediation.Token == "" {
+			fmt.Fprintln(streams.Err, "nook: mediated network requires a host broker; refusing unrestricted launch")
+			return 1
+		}
+		start = append(start, "--mediated-egress", "--egress-interceptor", streams.Mediation.Address)
+		startEnv = []string{"SMOLVM_INTERCEPTOR_TOKEN=" + streams.Mediation.Token}
+	}
 	create = append(create, "--label", "agentnook.image="+source,
 		"--label", "agentnook.ephemeral=true", "--", "sleep", "infinity")
 	execute = append(execute, "--")
 	execute = append(execute, args[split+1:]...)
 	quiet := IO{Out: streams.Err, Err: streams.Err}
+	var finishAudit func(bool) error
+	started := false
 	defer func() {
+		if finishAudit != nil {
+			stopped := !started
+			if started {
+				stopped = Run(binary, []string{"machine", "stop", "--name", name}, quiet) == 0
+			}
+			if err := finishAudit(stopped); err != nil {
+				fmt.Fprintln(streams.Err, "nook: network history incomplete:", err)
+				if code == 0 {
+					code = 1
+				}
+			}
+		}
 		if cleanup := Run(binary, []string{"machine", "delete", "--name", name, "--force"}, IO{Out: io.Discard, Err: streams.Err}); cleanup != 0 {
 			fmt.Fprintf(streams.Err, "nook: could not remove temporary machine %s; run smolvm machine delete --name %s --force\n", name, name)
 			if code == 0 {
@@ -101,7 +144,16 @@ func Launch(binary string, args []string, streams IO) (code int) {
 	if code = session.Run(binary, create, quiet); code != 0 {
 		return code
 	}
-	if code = session.Run(binary, []string{"machine", "start", "--name", name}, quiet); code != 0 {
+	if streams.Observe != nil {
+		var err error
+		finishAudit, err = streams.Observe(binary, name)
+		if err != nil {
+			fmt.Fprintln(streams.Err, "nook: network history:", err)
+			return 1
+		}
+	}
+	started = true // A failed/interrupted start may still have spawned a VMM.
+	if code = session.run(binary, start, quiet, startEnv); code != 0 {
 		return code
 	}
 	return session.Run(binary, execute, streams)

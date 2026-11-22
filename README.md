@@ -10,7 +10,7 @@
 
 ## Start
 
-Voraussetzungen für die Nutzung: macOS mit Apple Silicon oder Linux mit KVM und eine funktionierende Installation von **smolvm ab 1.33.0** im `PATH`. Docker, Node.js und die Agenten müssen auf dem Host **nicht** installiert sein. Für den ersten Image-Aufbau ist Internetzugriff auf Container-Registry und Paketquellen nötig; Build und Ausführung erfolgen lokal.
+Voraussetzungen für die Nutzung: macOS mit Apple Silicon oder Linux mit KVM und eine funktionierende Installation von **smolvm ab 1.36.1** im `PATH`. Docker, Node.js und die Agenten müssen auf dem Host **nicht** installiert sein. Für den ersten Image-Aufbau ist Internetzugriff auf Container-Registry und Paketquellen nötig; Build und Ausführung erfolgen lokal.
 
 Die folgenden Befehle bauen `nook` aus dem Quellcode. Dafür wird [mise](https://mise.jdx.dev/) benötigt; ein bereits gebautes `nook`-Binary benötigt mise und Go nicht.
 
@@ -93,6 +93,72 @@ Build-VMs erhalten keine Projekt-/Profilfreigaben, SSH-Agenten oder Agenten-Zuga
 
 Jeder Start erstellt eine frische benannte Arbeits-VM, führt den Agenten darin aus und löscht die VM beim regulären Ende sowie nach SIGINT/SIGTERM/SIGHUP. Dadurch bleibt sie während der Nutzung für `nook watch` sichtbar. Nach einem harten Prozessabbruch (SIGKILL/Stromausfall) kann eine `nook-run-*`- oder `nook-build-*`-Maschine zurückbleiben; sie lässt sich gezielt mit `smolvm machine delete --name NAME --force` entfernen.
 
+### Netzwerkverbindungen freigeben
+
+**Alle Arbeits-VMs blockieren standardmäßig Host-Loopback, LAN, private IPv4-/IPv6-Netze, Tailscale/CGNAT und Cloud-Metadaten** über smolvms `--block-private`. Öffentliche Internetziele bleiben erreichbar. Der Schutz gilt auch für bereits gespeicherte Projektzuordnungen beim nächsten Start; laufende VMs müssen neu gestartet werden. Mindestversion ist **smolvm 1.36.1**, einschließlich der neueren Gateway-/Loopback-Schutzfixes. `--network full` bedeutet nur „keine interaktiven TCP-Abfragen“, nicht „Host/LAN freigeben“.
+
+Zusätzlich lässt sich eine interaktive TCP-Freigabe für erreichbare Ziele aktivieren:
+
+```sh
+# Terminal 1, im Projekt:
+nook --network ask                      # Modus für diesen Projektordner + Agent speichern
+
+# Terminal 2, beliebiger Ordner, gleicher AGENTNOOK_HOME:
+nook network                            # Historie; Tab wechselt zu offenen Freigaben
+
+# Spätere Starts verwenden den gespeicherten Modus:
+nook
+nook --network full                     # ohne TCP-Abfragen; Host/LAN bleibt gesperrt
+```
+
+Gezielte private Ausnahmen sind nur ohne interaktive TCP-Abfragen möglich:
+
+```sh
+nook --network full --allow-private 10.20.0.0/16 --allow-private fd00:1234::/48
+nook                                   # Ausnahmen für diesen Projektordner + Agent wiederverwenden
+nook --clear-allow-private              # alle gespeicherten privaten Ausnahmen entfernen
+nook --network ask --clear-allow-private # sicher zu interaktiven Freigaben wechseln
+```
+
+Mehrere `--allow-private`-Flags ersetzen gemeinsam die gespeicherte Ausnahmeliste. CIDRs werden kanonisiert und doppelte Einträge entfernt. Ohne diese Flags wird die bestehende Liste wiederverwendet. Jede Ausnahme öffnet **alle Ports und Transporte** im genannten Netz; Cloud-Metadaten bleiben gesperrt. Deshalb nur enge, benötigte Netze oder einzelne IPs (`/32`, `/128`) freigeben. Eine Ausnahme für das Gateway allein öffnet dessen Host-Loopback-Ziel nicht: Beim Standard-Gateway `100.96.0.1` benötigt Hostzugriff ausdrücklich sowohl `100.96.0.1/32` als auch `127.0.0.1/32`. smolvm-interne Dienste und hostverwaltetes DNS bleiben ausgenommen.
+
+**`ask` und private Ausnahmen dürfen nicht kombiniert werden.** smolvms statische `--allow-private`-Regeln würden sonst den Freigabe-Broker umgehen und auch UDP/ICMP öffnen. Das wird vor Build oder VM-Start abgelehnt, einschließlich gespeicherter Ausnahmen. Ausnahmen zuerst mit `--clear-allow-private` entfernen oder ausdrücklich `--network full` verwenden.
+
+`nook network` öffnet die dauerhafte VM-Historie; `Tab` wechselt zu offenen Anfragen aller vermittelten VM-Sitzungen im aktuellen Datenpfad und zurück. Im Freigabe-Tab zuerst mit ↑/↓ oder `j`/`k` eine Anfrage auswählen, dann `a` für **einmal erlauben**, `s` für **Ziel-IP und Port für diese VM-Sitzung erlauben** oder `d` für **ablehnen**. Auswahl springt bei Ablauf einer Anfrage nicht automatisch auf eine andere. `q` schließt nur die Ansicht. Das Agenten-Terminal bleibt unberührt. Ohne offene Ansicht gibt es keine automatischen Freigaben.
+
+Entscheidung muss innerhalb von **12 Sekunden** erfolgen; smolvm setzt eine Obergrenze von 15 Sekunden. Timeout, fehlender Broker oder ungültige Kommunikation sperren die Verbindung. Nach Timeout muss das Gastprogramm die Verbindung erneut versuchen; eigene Client-Timeouts können früher greifen. Sitzungsfreigaben gelten nur für die attestierte VM-Startidentität und die exakte Ziel-IP samt Port. Andere Zieladressen, Ports und VM-Starts benötigen neue Freigaben. Parallele offene Anfragen desselben VM/IP/Port-Ziels werden durch eine Sitzungsfreigabe gemeinsam erlaubt. Freigaberegeln werden nicht dauerhaft gespeichert; verfügbare Netzwerkentscheidungen werden dagegen in der unten beschriebenen Historie archiviert. Bereits erlaubte offene Verbindungen werden durch Schließen der Ansicht oder Broker-Ausfall nicht getrennt. Build-VMs bleiben unverändert und benötigen weiterhin Internetzugriff.
+
+**Sicherheitsgrenzen:** Freigegeben werden TCP-Verbindungen, nicht einzelne HTTP-Requests. Eine erlaubte Verbindung kann viele Requests, mehrere Hostnamen oder Tunnelverkehr tragen. Eine IP-/Port-Sitzungsfreigabe gilt auch für andere Dienste auf derselben gemeinsamen IP und demselben Port. Optionale TLS-SNI-Namen stammen vom Gast und sind nur ungeprüfte Anzeigehinweise, keine Freigabeschlüssel. HTTPS wird nicht entschlüsselt; URLs, Methoden und Inhalte werden nicht geprüft. DNS bleibt durch smolvm verwaltet und wird nicht interaktiv freigegeben; darüber ist weiterhin Datenabfluss möglich. Sonstiges ausgehendes UDP/ICMP wird ohne zusätzliche smolvm-Ausnahmen gesperrt. smolvm-interne Dienste bleiben ausgenommen; dessen eigene Schutzregeln können Ziele auch nach Freigabe weiterhin blockieren. Dies ist keine vollständige Data-Loss-Prevention.
+
+Broker läuft ausschließlich auf dem Host, mit getrennten zufälligen Tokens für smolvm und Freigabeoberfläche. Der Datenpfad muss dem aktuellen Host-Benutzer gehören und darf nicht für Gruppe oder andere Benutzer beschreibbar sein. Nur das smolvm-Startkommando erhält den Mediation-Token; Gast, Agentenargumente und Konfiguration erhalten ihn nicht. Unter `AGENTNOOK_HOME/network/` liegen kurzlebige, nur für den Host-Benutzer lesbare Registrierungen mit lokalen Kontrolladressen und Kontrolltokens; sie werden nicht in VMs eingebunden. Gast-Payloads und Agenten-Zugangsdaten werden dort nicht gespeichert. Beim regulären Ende werden Broker und Registrierung entfernt. Nach SIGKILL können wirkungslose Registrierungen zurückbleiben; die Ansicht ignoriert nicht erreichbare Broker. Bei mehr als 256 Registrierungen müssen veraltete Dateien bei gestopptem `nook` entfernt werden.
+
+`--dry-run --network ask` zeigt den vermittelten Startplan, ohne Broker, Tokens oder Konfigurationsänderungen anzulegen. Alte Konfigurationen ohne Netzwerkmodus behalten Zugriff auf öffentliche Ziele ohne TCP-Abfragen, erhalten aber ebenfalls Host-/LAN-Schutz. `ask` wird nie still auf `full` zurückgestuft. Nicht unterstützte smolvm-Versionen werden vor Einrichtung oder Build abgelehnt. Die Freigabeansicht benötigt ein Terminal, die VM selbst kann auch ohne Terminal laufen und bleibt dann auf Freigaben aus einer separaten Ansicht angewiesen.
+
+### Dauerhafte Netzwerkhistorie
+
+Für jede **neu gestartete Arbeits-VM** werden die von smolvm bereitgestellten ausgehenden Netzwerkereignisse auf dem Host gespeichert, unabhängig davon, ob `nook network` geöffnet ist. Die Historie bleibt nach VM-Ende und VM-Löschung erhalten. Build-VMs bleiben ausgenommen; frühere Starts werden nicht nachträglich rekonstruiert.
+
+Jedes Ereignis enthält Zeitpunkt, VM-Startidentität soweit verfügbar, Protokoll, Ziel-IP/Port beziehungsweise DNS-Namen, **`ALLOWED` (erlaubt)** oder **`DENIED` (verboten)** sowie smolvms Entscheidungsgrund. `ALLOWED` bedeutet nur durch die Netzwerkregel zugelassen, nicht erfolgreiche TCP-Verbindung, erfolgreiche HTTP-Antwort oder sicheren Inhalt. Wiederholte Verbindungsversuche und Datagramme können mehrere Einträge erzeugen.
+
+**Abdeckung bei unverändertem Netzwerkverhalten:**
+
+- **`ask`:** strukturierte Engine-Entscheidungen einschließlich automatischer Sitzungsfreigaben, Broker-Ablehnungen/-Ausfall und Sperren vor dem Broker. DNS-, UDP- und ICMP-Ereignisse werden übernommen, soweit smolvm sie meldet. smolvms Grund `broker_decision` unterscheidet nicht zwischen jeder einzelnen Benutzeraktion und einem Broker-Timeout.
+- **`full`:** nur vorhandene **Sperrereignisse**. smolvm 1.36.1 stellt für diesen Modus keine vollständige Historie erlaubter Ziele bereit. Diese Lücke wird pro VM ausdrücklich als `denials-only` angezeigt; eine leere Historie ist kein Nachweis für fehlenden Verkehr. Für die Protokollierung werden weder zusätzliche Abfragen noch neue ICMP-/UDP-Sperren eingeführt.
+
+```sh
+nook network                            # VMs mit Historie, auch beendete
+nook network --machine nook-run-…       # bestimmte VM zunächst auswählen
+nook network --json                     # ohne Terminal, laufende VM oder smolvm-Installation
+nook network --json --machine nook-run-… --limit 100
+nook network --json --machine nook-run-… --before BYTE_CURSOR --limit 100
+```
+
+Im Historie-Tab wählen ↑/↓ oder `j`/`k` die VM; `PgUp` zeigt ältere, `PgDn` neuere Ereignisse und `Home` wieder die neuesten. Freigabetasten wirken ausschließlich im Freigabe-Tab. JSON liefert unter `history.page` die Ereignisse, `machine`, `next_before` und `has_older`; mit diesem Byte-Cursor sind auch große Archive seitenweise lesbar. Maximal 200 Ereignisse pro JSON-Seite; die TUI passt die Seitengröße an ihre Höhe an und benötigt mindestens 48 Spalten × 22 Zeilen. Archive bleiben auch bei nicht erreichbaren Live-Brokern lesbar; Probleme der Live-Ansicht werden separat ausgewiesen.
+
+Speicherort: `${AGENTNOOK_HOME:-~/.agentnook}/network/history/<VM-NAME>/machine.json` und `events.jsonl`. Verzeichnisse sind nur für den Host-Benutzer zugänglich, Dateien haben Modus `0600` und werden nicht in Gäste eingebunden. Gespeichert werden ausschließlich freigegebene Metadatenfelder, keine OAuth-URLs, Authorization-Codes, Header, Tokens oder Request-Payloads. DNS-Namen und Zieladressen können trotzdem vertraulich sein. Eine automatische Löschung oder Aufbewahrungsgrenze gibt es nicht; entsprechend kann das Archiv wachsen.
+
+Der Collector übernimmt smolvms Host-Auditdateien laufend und leert sie beim regulären Ende **nach VM-Stopp, vor VM-Löschung**. Bereits geöffnete Quelldateien bleiben bei Rotation lesbar. Erkannte Rotationslücken, ungültige Ereignisse, Speicherfehler oder nicht bestätigte Stopps werden als unvollständige Historie markiert. SIGKILL, Stromausfall und extreme Ereignisraten können weiterhin Lücken verursachen; eine fehlende Abschlusszeit heißt „nicht finalisiert“, nicht zwingend „läuft noch“. Gastinterner Loopback und eingehende Host→VM-Verbindungen werden nicht vollständig erfasst. Mehrere HTTP-Requests über dieselbe TCP-Verbindung erzeugen keine separaten Request-Einträge. Auch das ist kein vollständiger Paketmitschnitt und keine HTTPS-Request-Inspektion.
+
 ### Profile und Daten
 
 `AGENTNOOK_HOME` überschreibt den Standardpfad `~/.agentnook/`:
@@ -100,6 +166,11 @@ Jeder Start erstellt eine frische benannte Arbeits-VM, führt den Agenten darin 
 ```text
 ~/.agentnook/
   config.toml
+  network/
+    history/
+      nook-run-…/
+        machine.json  # VM-Zuordnung, Abdeckung, Abschluss und Warnungen
+        events.jsonl  # dauerhafte Netzwerkentscheidungen
   images/
     pi-default-…/
       image.smolmachine
@@ -112,7 +183,7 @@ Jeder Start erstellt eine frische benannte Arbeits-VM, führt den Agenten darin 
 
 Nur das HOME des gewählten Agenten wird nach `/root` eingebunden. Dadurch bleiben Konfiguration, Zugangsdaten, Sessions und Cache persistent; andere Profile und Agenten-HOMEs werden nicht freigegeben. Die Agenten verwalten ihre Dateien selbst. Zusatzfreigaben dürfen weder dieses HOME noch Telemetrie- und Systempfade überlagern.
 
-**Grenzen der Isolation:** Projektordner und ausgewähltes Agenten-HOME sind standardmäßig beschreibbar. Änderungen dort und an zusätzlichen beschreibbaren Freigaben bleiben auf dem Host erhalten; die VM selbst wird beim Beenden verworfen. Ein Agent kann auf alle Daten und Logins seines ausgewählten Profils zugreifen. Profile deshalb nur zwischen vertrauenswürdigen Projekten teilen. Die VM hat Netzwerkzugriff; agentnook hebt interne Permission-Dialoge der Agenten nicht auf.
+**Grenzen der Isolation:** Projektordner und ausgewähltes Agenten-HOME sind standardmäßig beschreibbar. Änderungen dort und an zusätzlichen beschreibbaren Freigaben bleiben auf dem Host erhalten; die VM selbst wird beim Beenden verworfen. Ein Agent kann auf alle Daten und Logins seines ausgewählten Profils zugreifen. Profile deshalb nur zwischen vertrauenswürdigen Projekten teilen. Die VM erreicht standardmäßig öffentliche Internetziele, nicht aber Host/LAN; private Ausnahmen müssen ausdrücklich freigegeben werden. `--network ask` vermittelt ausgehende TCP-Verbindungen mit den oben beschriebenen Grenzen. agentnook hebt interne Permission-Dialoge der Agenten nicht auf.
 
 Das Konfigurationsformat verlangt `version = 1` und Imagepfade mit `.smolmachine`. Alte `.tar`-Images, alte Konfigurationen und `--pi-*`-Flags werden **nicht migriert oder unterstützt**. Bestehende Daten werden nicht gelöscht.
 
@@ -181,7 +252,7 @@ Veröffentlichung nutzt den eingebauten `GITHUB_TOKEN`; kein zusätzliches Secre
 
 Der Job `vm` nutzt `ubuntu-24.04` (AMD64). Vor dem Testlauf prüft er `/dev/kvm`, gibt dem aktuellen Runner-Benutzer Zugriff und überprüft mit `KVM_CREATE_VM`, dass eine VM tatsächlich angelegt werden kann. Fehlendes oder unbenutzbares KVM macht den Job rot; echte VM-Tests werden nicht still übersprungen.
 
-Go wird über mise eingerichtet. Der Workflow lädt das vollständige **smolvm-1.33.0-Linux-x86_64-Bundle** in ein temporäres Job-Verzeichnis, prüft dessen fest hinterlegte SHA256 und verwendet den enthaltenen Wrapper samt Bibliotheken, Gast-Rootfs und Disk-Templates. Anschließend führt `mise run test:vm` alle drei Agenten-VM-Tests aus. Die Tests bauen ihre Images frisch auf, nutzen temporäre Profile und benötigen keine Agenten-Zugangsdaten oder zusätzlichen Repository-Secrets. Der Testlauf hat ein Limit von 25 Minuten, der gesamte VM-Job von 35 Minuten.
+Go wird über mise eingerichtet. Der Workflow lädt das vollständige **smolvm-1.36.1-Linux-x86_64-Bundle** in ein temporäres Job-Verzeichnis, prüft dessen fest hinterlegte SHA256 und verwendet den enthaltenen Wrapper samt Bibliotheken, Gast-Rootfs und Disk-Templates. Anschließend führt `mise run test:vm` alle drei Agenten-VM-Tests sowie echte Netzwerkfreigabe- und Host-/LAN-Schutztests aus. Die Agententests bauen ihre Images frisch auf und nutzen temporäre Profile. Die Netzwerktests verwenden separate minimale Linux-Gäste ohne Agenteninstallation und lokale Testserver. Sie prüfen Ablehnung, Einzel- und Sitzungsfreigabe sowie Broker-Ausfall, einschließlich ausbleibender Serverkontakte vor Freigabe. Der Schutztest prüft Host-Sperren in `full` und `ask`, IPv4-gemappte IPv6-Ziele, die Gateway-/Loopback-Trennung und explizite private Ausnahmen. Zusätzlich prüfen die Tests die echte Archivierung erlaubter und verbotener TCP-/DNS-Entscheidungen, Sperren vor dem Broker und den Erhalt der Historie nach VM-Löschung. Alle Tests benötigen keine Agenten-Zugangsdaten oder zusätzlichen Repository-Secrets. Der Testlauf hat ein Limit von 25 Minuten, der gesamte VM-Job von 35 Minuten.
 
 Jeder Job erhält einen frischen GitHub-Runner; eine Runner-Registrierung entfällt. Benötigt wird Internetzugriff auf GitHub Releases, Docker Hub und die Debian-/npm-Paketquellen. Das smolvm-Bundle wird nach dem Job entfernt; GitHub verwirft anschließend den Runner. Fork-PRs können abhängig von den Repository-Einstellungen eine Workflow-Freigabe benötigen.
 
@@ -205,10 +276,13 @@ mise run test:architecture
 
 Architekturtests laufen auch über `mise run test` und `mise run check`. Ein neuer Agent benötigt einen Adapter, einen Registry-Eintrag und die Erweiterung der expliziten Architekturregeln. Adapter liefern deklarative Telemetriepläne; nur der gemeinsame Launcher darf daraus private Host-Dateien und Mounts erstellen. Zusätzliche geschützte Gastpfade werden vom Adapter geliefert und beim Start geprüft.
 
-Die Gastadapter-Tests benötigen Node.js ab 22.19; ohne Node werden sie übersprungen. Prozess-E2E verwendet ausschließlich smolvm-Stubs und Testzugangsdaten, weder Docker noch einen Hypervisor. Echte VM-Tests für Pi, OpenCode und Claude Code laufen in CI im separaten GitHub-gehosteten Linux-KVM-Job. Lokal bleiben sie opt-in und benötigen smolvm ab 1.33.0, einen funktionierenden Hypervisor und Internet für den lokalen Erstaufbau:
+Die Gastadapter-Tests benötigen Node.js ab 22.19; ohne Node werden sie übersprungen. Prozess-E2E verwendet ausschließlich smolvm-Stubs und Testzugangsdaten, weder Docker noch einen Hypervisor. Echte VM-Tests für Pi, OpenCode und Claude Code laufen in CI im separaten GitHub-gehosteten Linux-KVM-Job. Lokal bleiben sie opt-in und benötigen smolvm ab 1.36.1, einen funktionierenden Hypervisor und Internet für den lokalen Erstaufbau:
 
 ```sh
 mise run test:vm
+
+# Nur echte Netzwerkfreigaben und Host-Schutz prüfen (smolvm >= 1.36.1):
+AGENTNOOK_VM_SMOKE=1 go test -count=1 -run '^TestReal(Private)?NetworkVM$' -timeout 3m -v ./test/e2e
 ```
 
 ## Logo

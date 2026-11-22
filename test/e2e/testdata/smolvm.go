@@ -40,7 +40,14 @@ func logBuild(args []string) {
 func main() {
 	args := os.Args[1:]
 	if len(args) == 1 && args[0] == "--version" {
-		fmt.Println("smolvm 1.33.0")
+		version := os.Getenv("AGENTNOOK_TEST_SMOLVM_VERSION")
+		if version == "" {
+			version = "smolvm 1.36.1"
+		}
+		if os.Getenv("AGENTNOOK_TEST_ACTION") == "old-runtime" {
+			version = "smolvm 1.35.4"
+		}
+		fmt.Println(version)
 		return
 	}
 	if len(args) < 2 {
@@ -64,12 +71,30 @@ func main() {
 	switch args[0] + " " + args[1] {
 	case "machine create":
 		save(state, args)
+	case "machine data-dir":
+		path := filepath.Join(dir, name+".audit")
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			panic(err)
+		}
+		fmt.Println(path)
 	case "machine start", "machine stop":
 		if _, err := os.Stat(state); err != nil {
 			panic(err)
 		}
+		if !build && args[1] == "stop" && os.Getenv("AGENTNOOK_TEST_ACTION") == "network-denial" {
+			file, err := os.OpenFile(filepath.Join(dir, name+".audit", "egress-denials.log"), os.O_APPEND|os.O_WRONLY, 0)
+			if err != nil {
+				panic(err)
+			}
+			_, err = file.WriteString("[2026-08-13T02:31:06Z]: egress policy denied resolve private.example\n")
+			file.Close()
+			if err != nil {
+				panic(err)
+			}
+		}
 	case "machine delete":
 		_ = os.Remove(state)
+		_ = os.RemoveAll(filepath.Join(dir, name+".audit"))
 	case "pack create":
 		if os.Getenv("AGENTNOOK_TEST_ACTION") == "pack-fail" {
 			os.Exit(8)
@@ -120,6 +145,11 @@ func main() {
 			}
 		}
 		save(capture, launch)
+		if os.Getenv("AGENTNOOK_TEST_ACTION") == "network-denial" {
+			if err := os.WriteFile(filepath.Join(dir, name+".audit", "egress-denials.log"), []byte("[2026-08-13T02:31:05Z]: egress policy denied connect to 100.96.0.1:1455\n"), 0o600); err != nil {
+				panic(err)
+			}
+		}
 		for _, arg := range launch {
 			if !strings.HasSuffix(arg, ":/root") {
 				continue

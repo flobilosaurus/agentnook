@@ -28,7 +28,7 @@ Build options:
   --storage GiB            Disk launch preset
   --set-default            Use successful build as default for this agent
 
-Builds and launches require smolvm >= 1.33.0; Docker is not needed.
+Builds and launches require smolvm >= 1.36.1; Docker is not needed.
 Native Linux architecture only. Build VMs receive no project/profile mounts.
 Build names are immutable; use a new name for each rebuild.
 Remove refuses images used by any agent default or saved project/agent selection.
