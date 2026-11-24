@@ -63,3 +63,43 @@ mise run test:vm
 # Nur echte Netzwerkfreigaben und Host-Schutz prüfen (smolvm >= 1.36.1):
 AGENTNOOK_VM_SMOKE=1 go test -count=1 -run '^TestReal(Private)?NetworkVM$' -timeout 3m -v ./test/e2e
 ```
+
+## Manuelle Testsession mit vier VMs
+
+`scripts/testing-session.py` startet im **aktuellen Herdr-Tab** vier Pi-Instanzen mit den Profilen `private` und `work`, dazu `nook watch` und `nook network`. Das funktioniert in **Herdr Desktop** (`herdr-app`) und in der **Herdr TUI** (`herdr`). Das ursprüngliche Panel bleibt als Steuerterminal erhalten; andere vorhandene Panels werden nicht ersetzt:
+
+```text
+┌──────────────────────────────────────────────────────┐
+│ ursprüngliches Terminal: up / status / down           │
+├─────────────┬─────────────┬─────────────┬──────────────┤
+│ private-1   │ private-2   │             │              │
+├─────────────┼─────────────┤ nook watch  │ nook network │
+│ work-1      │ work-2      │             │              │
+└─────────────┴─────────────┴─────────────┴──────────────┘
+```
+
+Voraussetzungen: Python **3.11+**, `herdr-app` bzw. `herdr` im `PATH`, smolvm ab 1.36.1 und ein vorhandenes Pi-Standardimage. `nook` wird aus dem `PATH`, ersatzweise aus `bin/nook` dieses Repositories verwendet. Bei Bedarf zuerst `mise run build` und `bin/nook images build pi-testing --agent pi --set-default` ausführen.
+
+In Herdr Desktop `up` in einem lokalen Terminal ausführen, das im gewünschten Tab als Panel angezeigt wird. Das Script findet es über `HC_TERMINAL_ID`; `HERDR_ENV=1` wird nur in der TUI benötigt. Bei abweichendem Desktop-Konfigurationspfad `HERDR_APP_HOME` setzen. Falls etwa `agentenv` ein anderes `HOME` setzt, `AGENTNOOK_HOME` explizit auf das Datenverzeichnis mit dem gewünschten Pi-Standardimage setzen. Für `down` denselben Wert verwenden.
+
+```sh
+# Im Repository, im gewünschten Herdr-Panel:
+./scripts/testing-session.py up
+./scripts/testing-session.py status
+./scripts/testing-session.py down
+
+# Optional: bestimmtes Binary oder keine interaktiven TCP-Freigaben
+./scripts/testing-session.py up --nook "$PWD/bin/nook" --network full
+```
+
+Die Session nutzt das aktuelle `${AGENTNOOK_HOME:-~/.agentnook}` und legt Profile beim VM-Start bei Bedarf an. Vorhandene Logins dieser Profile werden wiederverwendet; fehlen sie, im jeweiligen Agenten anmelden. Zwei VMs desselben Profils teilen dessen persistentes Agenten-HOME. Jede VM erhält einen eigenen, wiederverwendbaren Testordner unter `${AGENTNOOK_HOME}-testing-projects/` (standardmäßig `~/.agentnook-testing-projects/`), 2 CPUs und 2048 MiB RAM; insgesamt also 8 GiB Gast-RAM plus Host-Overhead. Die Projektordner liegen neben dem Datenverzeichnis, weil `nook` überlappende Pfade ablehnt. Nur die Testordner werden als Projekte eingebunden, nicht das Repository.
+
+Standardmäßig gilt `--network ask`, ohne private Netzwerkausnahmen. In `nook network` mit `Tab` zu offenen Freigaben wechseln. Beide Beobachter zeigen auch andere Instanzen desselben Datenpfads. `status` zeigt gestartete beziehungsweise beendete Panel-Prozesse; ob alle vier VMs tatsächlich laufen, zeigt `nook watch`.
+
+`down` fordert die eigenen Prozesse zum Beenden auf, wartet auf nook-VM-Cleanup und schließt anschließend ausschließlich die sechs erstellten Panels. Profile, Logins, Testdateien und Netzwerkhistorie bleiben bestehen. Ein zweites `up` wird bis zum erfolgreichen `down` abgelehnt. Bei unterbrochenem Start oder Cleanup-Timeout bleibt der Zustand erhalten: Panels prüfen und `down` erneut ausführen, optional mit `--timeout 180`. Kein pauschales VM-Löschen, kein SIGKILL. Bei hart getöteten Supervisoren kann manuelle Bereinigung nötig sein; das Script schließt dann nicht blind die Panels. Für `status` und `down` dasselbe `AGENTNOOK_HOME` und dieselbe Herdr-Instanz verwenden. In Herdr Desktop muss das Fenster für die Panel-Bereinigung geöffnet sein.
+
+Script-Tests ohne Herdr-Steuerung oder echte VMs:
+
+```sh
+python3 -m unittest discover -s scripts -p 'test_*.py'
+```

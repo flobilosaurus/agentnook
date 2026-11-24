@@ -40,7 +40,7 @@ Projektordner und ausgewähltes Agenten-HOME sind beschreibbar. Änderungen dort
 ## Mehr dazu
 
 - [Benutzung](docs/benutzung.md): Installation aus Quellcode, Images, Profile, Netzwerk und Herdr
-- [Entwicklung](docs/entwicklung.md): Checks, CI und Releases
+- [Entwicklung](docs/entwicklung.md): Checks, CI, Releases und manuelle Herdr-Testsession
 - [Logo und Lizenz](docs/design/logo/README.md) · [Drittlizenzen](THIRD_PARTY_NOTICES.md)
 
 Im Release-Archiv fehlt der Ordner `docs/`; die Dokumentation steht im [GitHub-Repository](https://github.com/flobilosaurus/agentnook).
