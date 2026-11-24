@@ -121,6 +121,35 @@ func (f sourceFixture) store(t *testing.T, machines []machine, verbose string) {
 	}
 }
 
+func TestRunningMachineNames(t *testing.T) {
+	f := setupSource(t)
+	t.Setenv("PATH", f.root)
+	f.store(t, []machine{
+		{Name: "nook-run-live", State: "running", CPUs: 2, MemoryMiB: 2048},
+		{Name: "nook-run-frozen", State: "frozen", CPUs: 2, MemoryMiB: 2048},
+		{Name: "nook-run-unreachable", State: "unreachable", CPUs: 2, MemoryMiB: 2048},
+		{Name: "nook-run-stopped", State: "stopped"},
+	}, "")
+	// A runtime check only needs the JSON listing.
+	if err := os.Remove(f.verbose); err != nil {
+		t.Fatal(err)
+	}
+	running, err := RunningMachineNames(context.Background())
+	if err != nil || len(running) != 1 || !running["nook-run-live"] {
+		t.Fatal(running, err)
+	}
+	f.store(t, []machine{}, "")
+	running, err = RunningMachineNames(context.Background())
+	if err != nil || running == nil || len(running) != 0 {
+		t.Fatal(running, err)
+	}
+	t.Setenv("PATH", "")
+	running, err = RunningMachineNames(context.Background())
+	if err == nil || running != nil {
+		t.Fatal(running, err)
+	}
+}
+
 func (f sourceFixture) mounts(name, project, home string) string {
 	return name + " running (eph) 2 2048 MiB 3\n  Mount: " + project + " -> /workspace\n  Mount: " + home + "/profiles/work/pi -> /root\n  Mount: /docs -> /mnt/docs (ro)\n  Env: TOKEN=secret\n"
 }

@@ -158,6 +158,28 @@ func (s *Source) Load(ctx context.Context) (Snapshot, error) {
 	return result, nil
 }
 
+// RunningMachineNames is the lightweight runtime check for network history.
+// Its caller scopes the names by matching them against its own data home's history.
+func RunningMachineNames(ctx context.Context) (map[string]bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	data, err := command(ctx, "smolvm", "machine", "ls", "--json")
+	if err != nil {
+		return nil, err
+	}
+	machines, err := parseMachines(data)
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[string]bool)
+	for _, machine := range machines {
+		if machine.State == "running" {
+			names[machine.Name] = true
+		}
+	}
+	return names, nil
+}
+
 // Close releases read-only telemetry handles; it never removes guest files.
 func (s *Source) Close() {
 	s.mu.Lock()

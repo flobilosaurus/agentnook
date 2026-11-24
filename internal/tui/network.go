@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -10,17 +11,32 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/flobilosaurus/agentnook/internal/egress"
+	"github.com/flobilosaurus/agentnook/internal/fleet"
 )
 
 type NetworkLoader func(...egress.HistoryQuery) (egress.Survey, error)
 type NetworkDecider func(egress.Entry, string) error
 
-func WatchNetwork(root string, load NetworkLoader, decide NetworkDecider, in io.Reader, out io.Writer) error {
-	_, err := tea.NewProgram(newNetworkModel(root, load, decide), tea.WithInput(in), tea.WithOutput(out), tea.WithAltScreen()).Run()
+func WatchNetwork(root string, initial egress.HistoryQuery, load NetworkLoader, decide NetworkDecider, in io.Reader, out io.Writer) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m := newNetworkModel(root, load, decide)
+	m.machine, m.before, m.showAll = initial.Machine, initial.Before, initial.Machine != ""
+	// Keep runtime discovery off the approval polling path.
+	m.checkRuntime = func() tea.Msg {
+		running, err := fleet.RunningMachineNames(ctx)
+		return networkRuntimeLoaded{running: running, err: err}
+	}
+	_, err := tea.NewProgram(m, tea.WithInput(in), tea.WithOutput(out), tea.WithAltScreen()).Run()
 	return err
 }
 
 type networkTick struct{}
+type networkRuntimeTick struct{}
+type networkRuntimeLoaded struct {
+	running map[string]bool
+	err     error
+}
 type networkLoaded struct {
 	survey egress.Survey
 	err    error
@@ -40,6 +56,10 @@ type networkModel struct {
 	busy          bool
 	width, height int
 	historyMode   bool
+	checkRuntime  tea.Cmd
+	running       map[string]bool // nil until runtime status is available.
+	runtimeErr    error
+	showAll       bool
 	machine       string
 	before        int64
 	newerPages    []int64
@@ -58,7 +78,7 @@ func (m networkModel) poll() tea.Cmd {
 		return networkLoaded{survey: survey, err: err}
 	}
 }
-func (m networkModel) Init() tea.Cmd { return m.poll() }
+func (m networkModel) Init() tea.Cmd { return tea.Batch(m.poll(), m.checkRuntime) }
 
 func (m networkModel) selectedIndex() int {
 	for i, entry := range m.survey.Requests {
@@ -69,13 +89,45 @@ func (m networkModel) selectedIndex() int {
 	return -1
 }
 
-func (m networkModel) machineIndex() int {
-	for i, machine := range m.survey.History.Machines {
+func (m networkModel) visibleMachines() []egress.MachineHistory {
+	if m.showAll {
+		return m.survey.History.Machines
+	}
+	var machines []egress.MachineHistory
+	for _, machine := range m.survey.History.Machines {
+		if m.running[machine.Machine] {
+			machines = append(machines, machine)
+		}
+	}
+	return machines
+}
+
+func (m networkModel) machineIndex(machines []egress.MachineHistory) int {
+	for i, machine := range machines {
 		if machine.Machine == m.machine {
 			return i
 		}
 	}
 	return -1
+}
+
+func (m *networkModel) selectMachine(name string) {
+	if m.machine != name {
+		m.machine = name
+		m.before, m.newerPages, m.pageLoading = 0, nil, true
+	}
+}
+
+func (m *networkModel) syncMachineSelection() {
+	machines := m.visibleMachines()
+	if m.machineIndex(machines) >= 0 {
+		return
+	}
+	if len(machines) == 0 {
+		m.selectMachine("")
+		return
+	}
+	m.selectMachine(machines[0].Machine)
 }
 
 func (m networkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -84,6 +136,17 @@ func (m networkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = max(20, msg.Width), max(10, msg.Height)
 	case networkTick:
 		return m, m.poll()
+	case networkRuntimeTick:
+		return m, m.checkRuntime
+	case networkRuntimeLoaded:
+		m.running, m.runtimeErr = msg.running, msg.err
+		// A failed lookup is not evidence that VMs ended. Keep the selection
+		// for recovery, but show no unconfirmed rows in the running-only view.
+		if msg.err == nil && !m.showAll {
+			m.syncMachineSelection()
+			m.finishPageLoad()
+		}
+		return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return networkRuntimeTick{} })
 	case networkLoaded:
 		m.survey = msg.survey
 		if msg.err != nil {
@@ -94,13 +157,10 @@ func (m networkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.selectedIndex() < 0 {
 			m.selection = "" // Never silently retarget an approval after expiry.
 		}
-		if m.machine == "" {
-			m.machine = msg.survey.History.Page.Machine
-			m.before = msg.survey.History.Page.Before
+		if msg.err == nil && (m.showAll || m.running != nil) {
+			m.syncMachineSelection()
 		}
-		if m.survey.History.Page.Machine == m.machine && m.survey.History.Page.Before == m.before {
-			m.pageLoading = false
-		}
+		m.finishPageLoad()
 		return m, tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg { return networkTick{} })
 	case networkDecided:
 		m.busy = false
@@ -153,22 +213,38 @@ func (m networkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *networkModel) finishPageLoad() {
+	page := m.survey.History.Page
+	if page.Machine == m.machine && page.Before == m.before {
+		m.pageLoading = false
+	}
+}
+
 func (m networkModel) historyKey(key string) networkModel {
+	if key == "f" {
+		m.showAll = !m.showAll
+		if m.showAll || m.running != nil {
+			m.syncMachineSelection()
+			m.finishPageLoad()
+		}
+		return m
+	}
+	machines := m.visibleMachines()
+	if len(machines) == 0 {
+		return m
+	}
 	switch key {
 	case "up", "k", "down", "j":
-		if len(m.survey.History.Machines) == 0 {
-			return m
-		}
-		i := m.machineIndex()
+		i := m.machineIndex(machines)
 		if i < 0 {
 			i = 0
 		} else if key == "up" || key == "k" {
 			i = max(0, i-1)
 		} else {
-			i = min(len(m.survey.History.Machines)-1, i+1)
+			i = min(len(machines)-1, i+1)
 		}
-		m.machine = m.survey.History.Machines[i].Machine
-		m.before, m.newerPages, m.pageLoading = 0, nil, true
+		m.selectMachine(machines[i].Machine)
+		m.finishPageLoad()
 	case "pgup":
 		page := m.survey.History.Page
 		if !m.pageLoading && page.Machine == m.machine && page.HasOlder {
@@ -192,7 +268,7 @@ func (m networkModel) View() string {
 		return ansi.Hardwrap("Network view needs at least 48 columns and 22 rows. Resize or q to quit; --json works at any size.", m.width, true)
 	}
 	lines := []string{accent.Render("agentnook · Network"), "AGENTNOOK_HOME: " + fleetText(m.root),
-		fmt.Sprintf("%d live approval broker(s) · %d pending · %d archived VM(s)", m.survey.Sessions, len(m.survey.Requests), len(m.survey.History.Machines))}
+		fmt.Sprintf("%d live approval broker(s) · %d pending · %d VM histories", m.survey.Sessions, len(m.survey.Requests), len(m.survey.History.Machines))}
 	if m.historyMode {
 		lines = append(lines, "[History] · Tab → Approvals", "")
 		lines = append(lines, m.historyView()...)
@@ -207,26 +283,48 @@ func (m networkModel) View() string {
 }
 
 func (m networkModel) historyView() []string {
-	lines := []string{"VMs (including ended machines):"}
-	index := m.machineIndex()
+	heading := "Running VMs · f show all"
+	if m.showAll {
+		heading = "All VMs · f show running only"
+	} else if m.runtimeErr != nil {
+		heading = "VM status unavailable · f show all"
+	}
+	status := fleetText(m.status)
+	if status == "" && m.runtimeErr != nil {
+		status = "VM status unavailable: " + fleetText(m.runtimeErr.Error())
+	}
+	lines := []string{heading}
+	machines := m.visibleMachines()
+	index := m.machineIndex(machines)
 	start := max(0, index-4)
-	for i := start; i < min(len(m.survey.History.Machines), start+5); i++ {
-		meta := m.survey.History.Machines[i]
-		line := fmt.Sprintf("  %s · %s/%s · %d events", meta.Machine, meta.Info.Profile, meta.Info.Agent, meta.Count)
+	for i := start; i < min(len(machines), start+5); i++ {
+		meta := machines[i]
+		prefix := "  "
 		if i == index {
-			line = "▸ " + strings.TrimSpace(line)
+			prefix = "▸ "
 		}
-		lines = append(lines, fleetText(line))
+		line := fleetText(fmt.Sprintf("%s · %s/%s · %d events", meta.Machine, meta.Info.Profile, meta.Info.Agent, meta.Count))
+		if m.running[meta.Machine] {
+			line = selected.Render("LIVE " + line)
+		}
+		lines = append(lines, prefix+line)
 	}
 	if index < 0 {
-		message := "No archived machines yet. History starts with new nook launches."
-		if len(m.survey.History.Machines) > 0 {
-			message = "Select an archived VM with ↑↓/jk."
+		message := "Select a VM with ↑↓/jk."
+		switch {
+		case !m.showAll && m.runtimeErr != nil:
+			message = "Press f to browse stored history."
+		case !m.showAll && m.running == nil:
+			message = "Checking VM status…"
+		case len(m.survey.History.Machines) == 0:
+			message = "No VM history yet. History starts with new nook launches."
+		case len(machines) == 0:
+			message = "No running VMs with history."
 		}
 		return append(lines, message, "",
-			"full: denials only; allowed traffic is NOT captured.", fleetText(m.status), "Tab approvals · q close view")
+			"full: denials only; allowed traffic is NOT captured.", status, "Tab approvals · q close view")
 	}
-	meta := m.survey.History.Machines[index]
+	meta := machines[index]
 	coverage := "ask: engine decisions (TCP/DNS/UDP/ICMP when reported)"
 	if meta.Coverage == "denials-only" {
 		coverage = "full: DENIALS ONLY — allowed traffic is NOT captured"
@@ -250,7 +348,7 @@ func (m networkModel) historyView() []string {
 			lines = append(lines, "No recorded events (not proof of no traffic).")
 		}
 	}
-	return append(lines, "", fleetText(m.status), "↑↓/jk VM · PgUp older · PgDn newer · Home latest · Tab approvals · q quit",
+	return append(lines, "", status, "↑↓/jk VM · PgUp older · PgDn newer · Home latest · Tab approvals · q quit",
 		"ALLOWED = policy permitted, NOT connection or HTTP success.")
 }
 

@@ -157,14 +157,14 @@ Jedes Ereignis enthält Zeitpunkt, VM-Startidentität soweit verfügbar, Protoko
 - **`full`:** nur vorhandene **Sperrereignisse**. smolvm 1.36.1 stellt für diesen Modus keine vollständige Historie erlaubter Ziele bereit. Diese Lücke wird pro VM ausdrücklich als `denials-only` angezeigt; eine leere Historie ist kein Nachweis für fehlenden Verkehr. Für die Protokollierung werden weder zusätzliche Abfragen noch neue ICMP-/UDP-Sperren eingeführt.
 
 ```sh
-nook network                            # VMs mit Historie, auch beendete
-nook network --machine nook-run-…       # bestimmte VM zunächst auswählen
+nook network                            # laufende VMs mit Historie; f zeigt alle
+nook network --machine nook-run-…       # bestimmte VM in ungefilterter Ansicht öffnen
 nook network --json                     # ohne Terminal, laufende VM oder smolvm-Installation
 nook network --json --machine nook-run-… --limit 100
 nook network --json --machine nook-run-… --before BYTE_CURSOR --limit 100
 ```
 
-Im Historie-Tab wählen ↑/↓ oder `j`/`k` die VM; `PgUp` zeigt ältere, `PgDn` neuere Ereignisse und `Home` wieder die neuesten. Freigabetasten wirken ausschließlich im Freigabe-Tab. JSON liefert unter `history.page` die Ereignisse, `machine`, `next_before` und `has_older`; mit diesem Byte-Cursor sind auch große Archive seitenweise lesbar. Maximal 200 Ereignisse pro JSON-Seite; die TUI passt die Seitengröße an ihre Höhe an und benötigt mindestens 48 Spalten × 22 Zeilen. Archive bleiben auch bei nicht erreichbaren Live-Brokern lesbar; Probleme der Live-Ansicht werden separat ausgewiesen.
+Der Historie-Tab zeigt zunächst nur laufende VMs. `f` wechselt zwischen laufenden und allen VMs; `LIVE` markiert laufende VMs. Auch wenn smolvm fehlt oder der VM-Status nicht abrufbar ist, zeigt `f` alle gespeicherten VM-Historien. Im Historie-Tab wählen ↑/↓ oder `j`/`k` die VM; `PgUp` zeigt ältere, `PgDn` neuere Ereignisse und `Home` wieder die neuesten. Freigabetasten wirken ausschließlich im Freigabe-Tab. JSON liefert unter `history.page` die Ereignisse, `machine`, `next_before` und `has_older`; mit diesem Byte-Cursor sind auch große Archive seitenweise lesbar. Maximal 200 Ereignisse pro JSON-Seite; die TUI passt die Seitengröße an ihre Höhe an und benötigt mindestens 48 Spalten × 22 Zeilen. Archive bleiben auch bei nicht erreichbaren Live-Brokern lesbar; Probleme der Live-Ansicht werden separat ausgewiesen.
 
 Speicherort: `${AGENTNOOK_HOME:-~/.agentnook}/network/history/<VM-NAME>/machine.json` und `events.jsonl`. Verzeichnisse sind nur für den Host-Benutzer zugänglich, Dateien haben Modus `0600` und werden nicht in Gäste eingebunden. Gespeichert werden ausschließlich freigegebene Metadatenfelder, keine OAuth-URLs, Authorization-Codes, Header, Tokens oder Request-Payloads. DNS-Namen und Zieladressen können trotzdem vertraulich sein. Eine automatische Löschung oder Aufbewahrungsgrenze gibt es nicht; entsprechend kann das Archiv wachsen.
 
