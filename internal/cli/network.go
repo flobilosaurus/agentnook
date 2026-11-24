@@ -16,7 +16,9 @@ const networkUsage = `Usage: nook network [--machine NAME]
 
 Show persistent per-VM outbound network history, including ended machines, in this AGENTNOOK_HOME.
 The terminal view needs at least 48 columns and 22 rows; JSON has no size requirement.
-History opens with running VMs only. f toggles all VMs; Tab switches to approvals.
+History uses a Profile → VM → Event tree and shows events under the selected VM.
+Approvals open by default. Tab switches between approvals and history.
+History shows running VMs only by default; f toggles all VMs.
 --machine opens the named VM in the unfiltered terminal view.
 History keys: up/down or j/k select VM; PgUp older; PgDn newer; Home latest.
 Every recorded event shows ALLOWED or DENIED and its policy reason.
@@ -30,13 +32,14 @@ Use page.machine and page.next_before with --machine and --before for older even
 Approve pending TCP connections for nook --network ask sessions in this AGENTNOOK_HOME.
 Run in a separate terminal; the agent keeps its own terminal input.
 Requires smolvm >= 1.36.1 for protected VM launches, not for this view.
-Choose a request explicitly with up/down or j/k; selection never jumps on expiry.
+Approvals are grouped in an always-open Profile → VM → Request tree.
+Up/down or j/k select requests only; selection never jumps on expiry.
 Keys: a allow once, s allow exact destination IP/port for this VM launch, d deny.
       q, Esc or Ctrl+C close only the view, not the VMs or brokers.
 Unanswered requests are denied after 12 seconds (smolvm's limit is 15 seconds).
 Retry the guest connection after a timeout. No headless automatic approvals.
 Session grants expire when the VM ends and never span VM launches or profiles.
-TLS SNI names are guest-supplied hints, not verified identities or grant keys.
+HTTP Host and TLS SNI names are guest-supplied hints, not verified identities or grant keys.
 This approves TCP connections, NOT individual HTTP requests, URLs or payloads.
 Host/LAN and cloud metadata are blocked before approval; private exceptions require full.
 DNS remains host-managed and is not interactively mediated; other UDP/ICMP is denied.

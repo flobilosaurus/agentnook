@@ -35,7 +35,7 @@ Beim ersten Start Agent und Profil wählen, danach im Agenten anmelden. `nook` b
 
 Projektordner und ausgewähltes Agenten-HOME sind beschreibbar. Änderungen dort und an weiteren beschreibbaren Freigaben bleiben bestehen. Der Agent hat Zugriff auf die Logins seines Profils. Teile Profile daher nur zwischen vertrauenswürdigen Projekten.
 
-Öffentliche Internetziele sind standardmäßig erreichbar; Netzwerkzugriffe auf Host und private Netze sind gesperrt. Mit `nook --network ask` lassen sich ausgehende TCP-Verbindungen in `nook network` freigeben. HTTP-Inhalte werden nicht geprüft; DNS erfordert keine Freigabe.
+Öffentliche Internetziele sind standardmäßig erreichbar; Netzwerkzugriffe auf Host und private Netze sind gesperrt. Mit `nook --network ask` lassen sich ausgehende TCP-Verbindungen in `nook network` freigeben. HTTP-Hostnamen können als ungeprüfte Hinweise erscheinen; freigegeben wird nach IP und Port. DNS erfordert keine Freigabe.
 
 ## Mehr dazu
 

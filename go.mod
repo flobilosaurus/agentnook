@@ -10,6 +10,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/charmbracelet/x/ansi v0.4.5
 	github.com/charmbracelet/x/term v0.2.1
+	github.com/creack/pty v1.1.24
 	golang.org/x/sys v0.28.0
 )
 

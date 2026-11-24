@@ -49,8 +49,21 @@ func TestRemoveReadOnlySandbox(t *testing.T) {
 	}
 }
 
+type realVMFixture struct {
+	data, workspace string
+	env             []string
+}
+
+func (f realVMFixture) command(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, launcher, args...)
+	cmd.Dir, cmd.Env = f.workspace, f.env
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.WaitDelay = 15 * time.Second
+	return cmd
+}
+
 // Explicit opt-in: builds and runs local smolvm artifacts; no Docker is needed.
-func realVMLauncher(t *testing.T) (string, func(...string) string) {
+func realVMLauncher(t *testing.T) (realVMFixture, func(...string) string) {
 	t.Helper()
 	if os.Getenv("AGENTNOOK_VM_SMOKE") != "1" {
 		t.Skip("set AGENTNOOK_VM_SMOKE=1 to run a real smolvm VM")
@@ -76,36 +89,37 @@ func realVMLauncher(t *testing.T) (string, func(...string) string) {
 			t.Fatal(err)
 		}
 	}
+	fixture := realVMFixture{data: data, workspace: workspace, env: append(os.Environ(),
+		"HOME="+home, "AGENTNOOK_HOME="+data, "AGENTNOOK_NONINTERACTIVE=1", "AGENTNOOK_HERDR=0",
+		"SMOLVM_DATA_DIR="+filepath.Join(root, "v"),
+		"XDG_CONFIG_HOME="+filepath.Join(home, "c"),
+		"XDG_CACHE_HOME="+filepath.Join(home, "k"),
+		"XDG_DATA_HOME="+filepath.Join(home, "d"),
+		"XDG_STATE_HOME="+filepath.Join(home, "s"))}
 	run := func(args ...string) string {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, launcher, args...)
-		cmd.Dir = workspace
-		cmd.Env = append(os.Environ(),
-			"HOME="+home, "AGENTNOOK_HOME="+data, "AGENTNOOK_NONINTERACTIVE=1",
-			"XDG_CONFIG_HOME="+filepath.Join(home, "c"),
-			"XDG_CACHE_HOME="+filepath.Join(home, "k"),
-			"XDG_DATA_HOME="+filepath.Join(home, "d"),
-			"XDG_STATE_HOME="+filepath.Join(home, "s"))
-		cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
-		cmd.WaitDelay = 15 * time.Second
-		output, err := cmd.CombinedOutput()
+		output, err := fixture.command(ctx, args...).CombinedOutput()
 		if err != nil {
 			t.Fatalf("real VM: %v\n%s", err, output)
 		}
 		return string(output)
 	}
-	return data, run
+	return fixture, run
 }
 
 // Each agent must build successfully and launch with explicit and saved selections.
 // A real build also catches npm lifecycle-policy failures that CLI stubs cannot.
-func realVMSmoke(t *testing.T, agent, version string) (string, func(...string) string) {
+func realVMSmoke(t *testing.T, agent, version string) (realVMFixture, func(...string) string) {
 	t.Helper()
-	data, run := realVMLauncher(t)
+	fixture, run := realVMLauncher(t)
+	base := "node:24-bookworm-slim"
+	if agent == "pi" {
+		base = "node:24-bookworm" // Includes curl for the interactive network test.
+	}
 	run("images", "build", agent+"-smoke", "--agent", agent,
-		"--agent-version", version, "--base-image", "node:24-bookworm-slim",
+		"--agent-version", version, "--base-image", base,
 		"--cpus", "2", "--mem", "2048", "--storage", "8", "--set-default")
 	for _, args := range [][]string{
 		{"--agent", agent, "--profile", "smoke", "--", "--version"},
@@ -115,13 +129,13 @@ func realVMSmoke(t *testing.T, agent, version string) (string, func(...string) s
 			t.Fatalf("unexpected %s version (args %q): %s", agent, args, output)
 		}
 	}
-	return data, run
+	return fixture, run
 }
 
 func TestRealVM(t *testing.T) {
-	data, run := realVMSmoke(t, "pi", "1.4.0")
+	fixture, run := realVMSmoke(t, "pi", "1.4.0")
 	run("--", "--offline", "--list-models")
-	auth, err := os.ReadFile(filepath.Join(data, "profiles", "smoke", "pi", ".pi", "agent", "auth.json"))
+	auth, err := os.ReadFile(filepath.Join(fixture.data, "profiles", "smoke", "pi", ".pi", "agent", "auth.json"))
 	if err != nil {
 		t.Fatalf("Pi did not create auth.json: %v", err)
 	}
@@ -129,4 +143,5 @@ func TestRealVM(t *testing.T) {
 	if err := json.Unmarshal(auth, &credentials); err != nil || credentials == nil || len(credentials) != 0 {
 		t.Fatalf("expected a new, empty credential store; parse error: %v", err)
 	}
+	t.Run("NetworkApproval", fixture.testPiNetworkApproval)
 }

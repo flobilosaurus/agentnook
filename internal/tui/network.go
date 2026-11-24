@@ -21,7 +21,9 @@ func WatchNetwork(root string, initial egress.HistoryQuery, load NetworkLoader, 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	m := newNetworkModel(root, load, decide)
-	m.machine, m.before, m.showAll = initial.Machine, initial.Before, initial.Machine != ""
+	m.machine, m.before = initial.Machine, initial.Before
+	m.historyMode = initial.Machine != ""
+	m.showAll = m.historyMode
 	// Keep runtime discovery off the approval polling path.
 	m.checkRuntime = func() tea.Msg {
 		running, err := fleet.RunningMachineNames(ctx)
@@ -67,10 +69,9 @@ type networkModel struct {
 }
 
 func newNetworkModel(root string, load NetworkLoader, decide NetworkDecider) networkModel {
-	return networkModel{root: root, load: load, decide: decide, width: 90, height: 26, historyMode: true}
+	return networkModel{root: root, load: load, decide: decide, width: 90, height: 26}
 }
 
-func (m networkModel) pageLimit() int { return max(1, min(200, m.height-21)) }
 func (m networkModel) poll() tea.Cmd {
 	query := egress.HistoryQuery{Machine: m.machine, Before: m.before, Limit: m.pageLimit()}
 	return func() tea.Msg {
@@ -149,6 +150,8 @@ func (m networkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return networkRuntimeTick{} })
 	case networkLoaded:
 		m.survey = msg.survey
+		m.survey.Requests = approvalOrder(msg.survey.Requests)
+		m.survey.History.Machines = historyOrder(msg.survey.History.Machines)
 		if msg.err != nil {
 			m.status = msg.err.Error()
 		} else if msg.survey.Warning != "" {
@@ -205,6 +208,11 @@ func (m networkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			entry := m.survey.Requests[i]
+			if !time.Now().Before(entry.Request.Deadline) {
+				m.selection = ""
+				m.status = "Request expired; retry the connection."
+				break
+			}
 			choice := map[string]string{"a": "once", "s": "session", "d": "deny"}[key]
 			m.selection, m.busy = "", true
 			return m, func() tea.Msg { return networkDecided{choice: choice, err: m.decide(entry, choice)} }
@@ -214,8 +222,7 @@ func (m networkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *networkModel) finishPageLoad() {
-	page := m.survey.History.Page
-	if page.Machine == m.machine && page.Before == m.before {
+	if m.hasCurrentHistoryPage() {
 		m.pageLoading = false
 	}
 }
@@ -247,7 +254,7 @@ func (m networkModel) historyKey(key string) networkModel {
 		m.finishPageLoad()
 	case "pgup":
 		page := m.survey.History.Page
-		if !m.pageLoading && page.Machine == m.machine && page.HasOlder {
+		if !m.pageLoading && m.hasCurrentHistoryPage() && page.HasOlder {
 			m.newerPages = append(m.newerPages, m.before)
 			m.before, m.pageLoading = page.NextBefore, true
 		}
@@ -273,112 +280,11 @@ func (m networkModel) View() string {
 		lines = append(lines, "[History] · Tab → Approvals", "")
 		lines = append(lines, m.historyView()...)
 	} else {
-		lines = append(lines, "[Approvals] · Tab → History · select explicitly with ↑↓/jk", "")
-		lines = append(lines, m.approvalView()...)
+		lines = append(lines, "[Approvals] · ↑↓/jk requests · Tab history", "")
+		lines = append(lines, m.approvalView(m.height-len(lines))...)
 	}
 	for i := range lines {
 		lines[i] = ansi.Truncate(lines[i], m.width, "…")
 	}
 	return strings.Join(lines, "\n")
-}
-
-func (m networkModel) historyView() []string {
-	heading := "Running VMs · f show all"
-	if m.showAll {
-		heading = "All VMs · f show running only"
-	} else if m.runtimeErr != nil {
-		heading = "VM status unavailable · f show all"
-	}
-	status := fleetText(m.status)
-	if status == "" && m.runtimeErr != nil {
-		status = "VM status unavailable: " + fleetText(m.runtimeErr.Error())
-	}
-	lines := []string{heading}
-	machines := m.visibleMachines()
-	index := m.machineIndex(machines)
-	start := max(0, index-4)
-	for i := start; i < min(len(machines), start+5); i++ {
-		meta := machines[i]
-		prefix := "  "
-		if i == index {
-			prefix = "▸ "
-		}
-		line := fleetText(fmt.Sprintf("%s · %s/%s · %d events", meta.Machine, meta.Info.Profile, meta.Info.Agent, meta.Count))
-		if m.running[meta.Machine] {
-			line = selected.Render("LIVE " + line)
-		}
-		lines = append(lines, prefix+line)
-	}
-	if index < 0 {
-		message := "Select a VM with ↑↓/jk."
-		switch {
-		case !m.showAll && m.runtimeErr != nil:
-			message = "Press f to browse stored history."
-		case !m.showAll && m.running == nil:
-			message = "Checking VM status…"
-		case len(m.survey.History.Machines) == 0:
-			message = "No VM history yet. History starts with new nook launches."
-		case len(machines) == 0:
-			message = "No running VMs with history."
-		}
-		return append(lines, message, "",
-			"full: denials only; allowed traffic is NOT captured.", status, "Tab approvals · q close view")
-	}
-	meta := machines[index]
-	coverage := "ask: engine decisions (TCP/DNS/UDP/ICMP when reported)"
-	if meta.Coverage == "denials-only" {
-		coverage = "full: DENIALS ONLY — allowed traffic is NOT captured"
-	}
-	end := "not finalized (running or abruptly interrupted)"
-	if !meta.Ended.IsZero() {
-		end = meta.Ended.Local().Format(time.RFC3339)
-	}
-	lines = append(lines, "", "Project: "+fleetText(meta.Info.Project), coverage,
-		"End: "+end, "Audit warning: "+fleetText(meta.Warning),
-		"Time                 Decision Protocol Target · policy reason")
-	page := m.survey.History.Page
-	if page.Machine != m.machine || page.Before != m.before {
-		lines = append(lines, "Loading machine history…")
-	} else {
-		for _, event := range page.Events {
-			lines = append(lines, fmt.Sprintf("%s %-7s %-4s %s · %s", event.Time.Local().Format("2006-01-02 15:04:05"),
-				strings.ToUpper(fleetText(event.Decision)), strings.ToUpper(fleetText(event.Protocol)), fleetText(event.Target), fleetText(event.Reason)))
-		}
-		if len(page.Events) == 0 {
-			lines = append(lines, "No recorded events (not proof of no traffic).")
-		}
-	}
-	return append(lines, "", status, "↑↓/jk VM · PgUp older · PgDn newer · Home latest · Tab approvals · q quit",
-		"ALLOWED = policy permitted, NOT connection or HTTP success.")
-}
-
-func (m networkModel) approvalView() []string {
-	var lines []string
-	index := m.selectedIndex()
-	count := max(1, m.height-17)
-	start := max(0, index-count+1)
-	for i := start; i < min(len(m.survey.Requests), start+count); i++ {
-		e := m.survey.Requests[i]
-		seconds := max(0, int(time.Until(e.Request.Deadline).Seconds()))
-		line := fmt.Sprintf("  %s · %s/%s · %ds", e.Request.Target, e.Info.Profile, e.Info.Agent, seconds)
-		if i == index {
-			line = "▸ " + strings.TrimSpace(line)
-		}
-		lines = append(lines, fleetText(line))
-	}
-	if len(m.survey.Requests) == 0 {
-		lines = append(lines, "No pending connections. Tab shows persistent machine history.")
-	}
-	if index >= 0 {
-		e := m.survey.Requests[index]
-		lines = append(lines, "", "Project: "+fleetText(e.Info.Project), "Session: "+fleetText(e.Info.Session),
-			"VM launch: "+fleetText(e.Request.Machine), "TCP destination: "+fleetText(e.Request.Target))
-		if e.Request.Hint != "" {
-			lines = append(lines, "TLS SNI (unverified, guest-supplied): "+fleetText(e.Request.Hint))
-		}
-		lines = append(lines, "Session approval covers ONLY this VM launch + exact IP/port.")
-	}
-	return append(lines, "", fleetText(m.status), "a allow once · s allow IP/port for VM session · d deny · Tab history · q quit",
-		"12s approval window. Timeout denies; retry connection. DNS is not mediated.",
-		"Approves TCP connections, NOT individual HTTP requests or their contents.")
 }

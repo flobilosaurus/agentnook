@@ -3,12 +3,54 @@ package e2e
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/flobilosaurus/agentnook/internal/egress"
 )
+
+func TestNetworkHistoryTreeInTerminal(t *testing.T) {
+	s := newSandbox(t)
+	for _, profile := range []string{"work", "personal"} {
+		_, stderr, code := s.run(t, s.project, "network-denial", 0, "--agent", "pi", "--profile", profile, "--agent-version", "1.4.0")
+		if code != 0 {
+			t.Fatal(code, stderr)
+		}
+	}
+	startView := func(args ...string) *testTerminal {
+		cmd := exec.Command(launcher, append([]string{"network"}, args...)...)
+		cmd.Dir = s.project
+		cmd.Env = []string{"HOME=" + s.home, "AGENTNOOK_HOME=" + s.data, "PATH=" + stubBin, "AGENTNOOK_TEST_CAPTURE=" + s.capture}
+		return startTestTerminal(t, cmd)
+	}
+	view := startView()
+	view.expect(t, 8*time.Second, `\[Approvals\]`)
+	view.send(t, "\t")
+	view.expect(t, 5*time.Second, `\[History\]`)
+	view.send(t, "f")
+	view.expect(t, 5*time.Second, `├─ Profile personal · 1 VM`)
+	view.expect(t, 5*time.Second, `└─ Profile work · 1 VM`)
+	view.expect(t, 5*time.Second, `│  └─ ▸ VM pi · nook-run-[a-z0-9]+ · 2 events`)
+	view.expect(t, 5*time.Second, `│     ├─ DENIED DNS private\.example`)
+	view.send(t, "j")
+	view.expect(t, 5*time.Second, `   └─ ▸ VM pi · nook-run-[a-z0-9]+ · 2 events`)
+	view.expect(t, 5*time.Second, `      └─ DENIED TCP 100\.96\.0\.1:1455`)
+	view.send(t, "q")
+	view.wait(t)
+
+	archive, err := egress.ReadHistory(s.data, egress.HistoryQuery{})
+	if err != nil || len(archive.Machines) != 2 {
+		t.Fatal(archive.Machines, err)
+	}
+	view = startView("--machine", archive.Machines[0].Machine)
+	view.expect(t, 8*time.Second, `\[History\]`)
+	view.expect(t, 5*time.Second, `▸ VM pi · `+archive.Machines[0].Machine)
+	view.send(t, "q")
+	view.wait(t)
+}
 
 func TestNetworkHistorySurvivesMachineDeletionAndShowsFinalStopEvents(t *testing.T) {
 	s := newSandbox(t)

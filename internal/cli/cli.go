@@ -526,7 +526,7 @@ func (a App) Run(args []string) int {
 		defer broker.Close()
 		streams.Mediation = &vm.Mediation{Address: broker.Address(), Token: broker.Token()}
 		historyInfo.Session = broker.Session()
-		fmt.Fprintln(a.Err, "Network: ask — run nook network in another terminal with the same AGENTNOOK_HOME (Tab: approvals); unanswered TCP connections are denied after 12s.")
+		fmt.Fprintln(a.Err, "Network: ask — run nook network in another terminal with the same AGENTNOOK_HOME to approve connections; unanswered TCP connections are denied after 12s.")
 	}
 	mode := selected.Network
 	if mode == "" {
