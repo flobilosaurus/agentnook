@@ -2,20 +2,27 @@
 package egress
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/subtle"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
+	"net"
+	"net/http"
 	"net/netip"
+	"strconv"
+	"strings"
 )
 
 // flow matches smolvm 1.35.4's SMOLMEG2 prelude. Application bytes are never
 // persisted, and guest-provided names are never used as authorization keys.
 type flow struct {
-	machine string
-	target  string
-	hint    string
+	machine  string
+	target   string
+	hint     string // TLS SNI
+	httpHost string
 }
 
 func readFlow(r io.Reader, token []byte) (flow, error) {
@@ -59,10 +66,62 @@ func readFlow(r io.Reader, token []byte) (flow, error) {
 		return flow{}, err
 	}
 	return flow{
-		machine: hex.EncodeToString(fixed[40:56]),
-		target:  netip.AddrPortFrom(ip, binary.BigEndian.Uint16(fixed[73:75])).String(),
-		hint:    serverName(payload),
+		machine:  hex.EncodeToString(fixed[40:56]),
+		target:   netip.AddrPortFrom(ip, binary.BigEndian.Uint16(fixed[73:75])).String(),
+		hint:     serverName(payload),
+		httpHost: httpHost(payload),
 	}, nil
+}
+
+// httpHost reads only complete HTTP/1.x headers from the bounded prelude.
+// Absolute-form and CONNECT targets are not direct HTTP Host hints: Go derives
+// req.Host from their request target rather than from the Host header.
+func httpHost(p []byte) string {
+	end := bytes.Index(p, []byte("\r\n\r\n"))
+	if end < 0 {
+		return ""
+	}
+	line, _, _ := bytes.Cut(p, []byte("\r\n"))
+	if !bytes.HasSuffix(line, []byte(" HTTP/1.0")) && !bytes.HasSuffix(line, []byte(" HTTP/1.1")) {
+		return ""
+	}
+	headers := p[:end+4]
+	if bytes.Contains(headers, []byte("\n ")) || bytes.Contains(headers, []byte("\n\t")) {
+		return "" // Obsolete folded header lines are ambiguous.
+	}
+	req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(headers)))
+	if err != nil || req.Method == http.MethodConnect || (!strings.HasPrefix(req.RequestURI, "/") && req.RequestURI != "*") {
+		return ""
+	}
+	name := req.Host
+	if strings.Contains(name, ":") {
+		host, port, err := net.SplitHostPort(name)
+		if err != nil || strings.ContainsAny(name, "[]") {
+			return ""
+		}
+		if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+			return ""
+		}
+		name = host
+	}
+	bare := strings.TrimSuffix(name, ".")
+	if _, err := netip.ParseAddr(bare); err == nil {
+		return "" // IP literals aren't domain hints.
+	}
+	if len(bare) > 253 {
+		return ""
+	}
+	for label := range strings.SplitSeq(bare, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return ""
+		}
+		for _, c := range label {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
+				return ""
+			}
+		}
+	}
+	return name
 }
 
 // serverName extracts an optional, UNVERIFIED TLS SNI hint. It does not inspect

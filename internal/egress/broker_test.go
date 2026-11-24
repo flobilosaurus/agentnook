@@ -84,9 +84,39 @@ func TestServerNameIsBoundedAndDisplayOnly(t *testing.T) {
 	}
 }
 
+func TestHTTPHost(t *testing.T) {
+	const request = "GET /path HTTP/1.1\r\n"
+	for _, tt := range []struct{ label, input, want string }{
+		{"host", request + "Host: github.com\r\n\r\n", "github.com"},
+		{"mixed case and port", request + "hOsT:\tExample.COM.:8080 \r\n\r\n", "Example.COM."},
+		{"HTTP/1.0", "GET / HTTP/1.0\r\nHost: example.com\r\n\r\n", "example.com"},
+		{"first request only", request + "Host: first.example\r\n\r\n" + request + "Host: other.example\r\n\r\n", "first.example"},
+		{"not in body", request + "Content-Length: 17\r\n\r\nHost: example.com", ""},
+		{"incomplete headers", request + "Host: example.com\r\n", ""},
+		{"duplicate host", request + "Host: a.example\r\nhost: b.example\r\n\r\n", ""},
+		{"folded host", request + "Host:\r\n example.com\r\n\r\n", ""},
+		{"ip literal", request + "Host: 203.0.113.8:80\r\n\r\n", ""},
+		{"ipv6 literal", request + "Host: [2001:db8::8]:80\r\n\r\n", ""},
+		{"invalid port", request + "Host: example.com:65536\r\n\r\n", ""},
+		{"invalid hostname", request + "Host: example..com\r\n\r\n", ""},
+		{"oversize label", request + "Host: " + strings.Repeat("a", 64) + ".example\r\n\r\n", ""},
+		{"control character", request + "Host: bad\x1bname.example\r\n\r\n", ""},
+		{"absolute target", "GET http://first.example/ HTTP/1.1\r\nHost: other.example\r\n\r\n", ""},
+		{"CONNECT", "CONNECT first.example:443 HTTP/1.1\r\nHost: other.example\r\n\r\n", ""},
+		{"other protocol", "SOMETHING ELSE\r\nHost: example.com\r\n\r\n", ""},
+	} {
+		t.Run(tt.label, func(t *testing.T) {
+			if got := httpHost([]byte(tt.input)); got != tt.want {
+				t.Fatalf("httpHost = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func FuzzReadFlow(f *testing.F) {
 	token := bytes.Repeat([]byte{7}, 32)
 	f.Add(prelude(token, 1, "203.0.113.8:443", hello("example.com")))
+	f.Add(prelude(token, 1, "203.0.113.8:80", []byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")))
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, p []byte) {
 		_, _ = readFlow(bytes.NewReader(p), token)
@@ -197,6 +227,33 @@ func TestBrokerOnceDenySessionAndLaunchIsolation(t *testing.T) {
 		t.Fatal("grant leaked across launches")
 	}
 	other.Close()
+	verdict(t, c, 1)
+}
+
+func TestBrokerHTTPHostIsOnlyADisplayHint(t *testing.T) {
+	root, b := startBroker(t)
+	payload := func(host string) []byte {
+		return []byte("GET /private-path HTTP/1.1\r\nHost: " + host + "\r\nCookie: secret-cookie\r\n\r\n")
+	}
+	const target = "203.0.113.8:80"
+	c := connectFlow(t, b, 1, target, payload("first.example"))
+	e := waitEntries(t, root, 1)[0]
+	if e.Request.Target != target || e.Request.HTTPHost != "first.example" || e.Request.Hint != "" {
+		t.Fatal(e.Request)
+	}
+	if data, err := json.Marshal(e.Request); err != nil || bytes.Contains(data, []byte("private-path")) || bytes.Contains(data, []byte("secret-cookie")) {
+		t.Fatal("request snapshot contains extra HTTP metadata", err)
+	}
+	if err := Decide(e, "session"); err != nil {
+		t.Fatal(err)
+	}
+	verdict(t, c, 0)
+	verdict(t, connectFlow(t, b, 1, target, payload("other.example")), 0)
+	c = connectFlow(t, b, 1, "203.0.113.9:80", payload("first.example"))
+	e = waitEntries(t, root, 1)[0]
+	if err := Decide(e, "deny"); err != nil {
+		t.Fatal(err)
+	}
 	verdict(t, c, 1)
 }
 

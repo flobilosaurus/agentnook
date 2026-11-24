@@ -34,6 +34,7 @@ type Request struct {
 	Machine  string    `json:"machine"`
 	Target   string    `json:"target"`
 	Hint     string    `json:"hint,omitempty"`
+	HTTPHost string    `json:"http_host,omitempty"`
 	Deadline time.Time `json:"deadline"`
 }
 
@@ -216,7 +217,9 @@ func (b *Broker) handleFlow(conn net.Conn) {
 		_, _ = conn.Write([]byte{0})
 		return
 	}
-	p := &pending{request: Request{ID: rand.Text(), Machine: f.machine, Target: f.target, Hint: f.hint, Deadline: deadline}, verdict: make(chan byte, 1)}
+	p := &pending{request: Request{
+		ID: rand.Text(), Machine: f.machine, Target: f.target, Hint: f.hint, HTTPHost: f.httpHost, Deadline: deadline,
+	}, verdict: make(chan byte, 1)}
 	b.pending[p.request.ID] = p
 	b.mu.Unlock()
 	defer func() {
