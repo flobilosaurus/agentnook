@@ -12,7 +12,19 @@
 
 Voraussetzungen für die Nutzung: macOS mit Apple Silicon oder Linux mit KVM und eine funktionierende Installation von **smolvm ab 1.36.1** im `PATH`. Docker, Node.js und die Agenten müssen auf dem Host **nicht** installiert sein. Für den ersten Image-Aufbau ist Internetzugriff auf Container-Registry und Paketquellen nötig; Build und Ausführung erfolgen lokal.
 
-Die folgenden Befehle installieren `nook` aus dem Quellcode. Dafür wird [mise](https://mise.jdx.dev/) benötigt; das installierte Binary benötigt mise und Go nicht.
+### Release installieren (empfohlen)
+
+Der Installer lädt das veröffentlichte Binary für macOS (Apple Silicon) oder Linux (AMD64/ARM64) und prüft die SHA-256-Prüfsumme. Kein GitHub-Login, kein Go oder mise nötig.
+
+```sh
+curl -qfsS https://raw.githubusercontent.com/flobilosaurus/agentnook/main/install.sh | sh
+```
+
+Der Einzeiler führt `install.sh` aus `main` aus und installiert das neueste stabile Release. Für eine feste Version ersetze `| sh` durch z. B. `| sh -s -- v0.1.0`. Zum Prüfen des Skripts vor der Ausführung kannst du `| sh` weglassen. `smolvm` wird nicht mitinstalliert.
+
+### Alternativ: aus dem Quellcode installieren
+
+Dafür wird [mise](https://mise.jdx.dev/) benötigt; das installierte Binary benötigt mise und Go nicht.
 
 ```sh
 # Im agentnook-Repository:
@@ -21,7 +33,7 @@ mise install
 mise run install
 ```
 
-`mise run install` installiert oder aktualisiert `nook` in `~/.local/bin`. Für einen anderen absoluten Ordner im `PATH` setze `NOOK_INSTALL_DIR`, z. B. `NOOK_INSTALL_DIR=/absoluter/pfad/bin mise run install`. Shell-Konfigurationen werden nicht verändert.
+Beide Methoden installieren oder aktualisieren `nook` ohne `sudo` in `~/.local/bin`. Für einen anderen absoluten Ordner im `PATH` setze `NOOK_INSTALL_DIR`, z. B. `NOOK_INSTALL_DIR=/absoluter/pfad/bin mise run install`. Shell-Konfigurationen werden nicht verändert.
 
 Falls `~/.local/bin` noch nicht im `PATH` der aktuellen Shell steht, ergänze ihn mit `export PATH="$HOME/.local/bin:$PATH"` (Bash/Zsh) oder `$env.PATH = ($env.PATH | prepend ($env.HOME | path join ".local" "bin"))` (Nushell).
 
