@@ -12,15 +12,20 @@
 
 Voraussetzungen für die Nutzung: macOS mit Apple Silicon oder Linux mit KVM und eine funktionierende Installation von **smolvm ab 1.36.1** im `PATH`. Docker, Node.js und die Agenten müssen auf dem Host **nicht** installiert sein. Für den ersten Image-Aufbau ist Internetzugriff auf Container-Registry und Paketquellen nötig; Build und Ausführung erfolgen lokal.
 
-Die folgenden Befehle bauen `nook` aus dem Quellcode. Dafür wird [mise](https://mise.jdx.dev/) benötigt; ein bereits gebautes `nook`-Binary benötigt mise und Go nicht.
+Die folgenden Befehle installieren `nook` aus dem Quellcode. Dafür wird [mise](https://mise.jdx.dev/) benötigt; das installierte Binary benötigt mise und Go nicht.
 
 ```sh
 # Im agentnook-Repository:
 mise trust
 mise install
-mise run build
-export PATH="$PWD/bin:$PATH"
+mise run install
+```
 
+`mise run install` installiert oder aktualisiert `nook` in `~/.local/bin`. Für einen anderen absoluten Ordner im `PATH` setze `NOOK_INSTALL_DIR`, z. B. `NOOK_INSTALL_DIR=/absoluter/pfad/bin mise run install`. Shell-Konfigurationen werden nicht verändert.
+
+Falls `~/.local/bin` noch nicht im `PATH` der aktuellen Shell steht, ergänze ihn mit `export PATH="$HOME/.local/bin:$PATH"` (Bash/Zsh) oder `$env.PATH = ($env.PATH | prepend ($env.HOME | path join ".local" "bin"))` (Nushell).
+
+```sh
 # Anschließend im gewünschten Projektordner:
 cd /pfad/zum/projekt
 nook

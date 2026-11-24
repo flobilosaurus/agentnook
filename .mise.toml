@@ -18,6 +18,12 @@ fi
 [tasks.build]
 run = "go build -o bin/nook ./cmd/nook"
 
+[tasks.install]
+description = "Install nook into ~/.local/bin or NOOK_INSTALL_DIR"
+run = '''
+GOBIN="${NOOK_INSTALL_DIR:-$HOME/.local/bin}" go install ./cmd/nook
+'''
+
 [tasks.test]
 run = "go test -race ./internal/..."
 
