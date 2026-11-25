@@ -18,10 +18,12 @@ func TestReleaseInstaller(t *testing.T) {
 	for _, tc := range []struct {
 		name, os, arch, platform, wantError string
 		pinned, badChecksum, duplicate      bool
+		inPath, shadowed                    bool
 	}{
 		{name: "latest_mac", os: "Darwin", arch: "arm64", platform: "darwin_arm64"},
 		{name: "pinned_linux_amd64", os: "Linux", arch: "x86_64", platform: "linux_amd64", pinned: true},
-		{name: "latest_linux_arm64", os: "Linux", arch: "aarch64", platform: "linux_arm64"},
+		{name: "latest_linux_arm64", os: "Linux", arch: "aarch64", platform: "linux_arm64", inPath: true},
+		{name: "shadowed", os: "Darwin", arch: "arm64", platform: "darwin_arm64", inPath: true, shadowed: true},
 		{name: "bad_checksum", os: "Darwin", arch: "arm64", platform: "darwin_arm64", badChecksum: true, wantError: "SHA-256 mismatch"},
 		{name: "duplicate_checksum", os: "Linux", arch: "aarch64", platform: "linux_arm64", duplicate: true, wantError: "unique release archive"},
 		{name: "unsupported", os: "Darwin", arch: "x86_64", wantError: "Unsupported platform"},
@@ -32,7 +34,7 @@ func TestReleaseInstaller(t *testing.T) {
 			home := filepath.Join(root, "home with spaces")
 			installDir := filepath.Join(home, ".local", "bin")
 			if tc.pinned {
-				installDir = filepath.Join(root, "custom bin")
+				installDir = filepath.Join(root, `custom bin's "quoted"`)
 			}
 			for _, dir := range []string{bin, temp} {
 				if err := os.Mkdir(dir, 0o700); err != nil {
@@ -96,10 +98,17 @@ cp "$TEST_FIXTURES/$file" "${13}"
 				requested = tag
 				args = append(args, requested)
 			}
+			path := bin + ":/usr/bin:/bin"
+			if tc.inPath {
+				path += ":" + installDir + "/"
+			}
+			if tc.shadowed {
+				write(filepath.Join(bin, "nook"), []byte("#!/bin/sh\nexit 1\n"))
+			}
 			cmd := exec.Command("/bin/sh", args...)
 			// Use real host utilities, but no real curl, user config or network.
 			cmd.Env = []string{
-				"PATH=" + bin + ":/usr/bin:/bin", "HOME=" + home, "TMPDIR=" + temp,
+				"PATH=" + path, "HOME=" + home, "TMPDIR=" + temp,
 				"TEST_OS=" + tc.os, "TEST_ARCH=" + tc.arch, "TEST_FIXTURES=" + root,
 				"TEST_ARCHIVE=" + archive, "TEST_REQUESTED=" + requested, "TEST_TAG=" + tag,
 			}
@@ -127,6 +136,34 @@ cp "$TEST_FIXTURES/$file" "${13}"
 			version, err := exec.Command(destination, "--version").CombinedOutput()
 			if err != nil || string(version) != "nook "+tag+"\n" {
 				t.Fatalf("installed version: %v: %s", err, version)
+			}
+			message := string(output)
+			wantStatus := " is not in PATH."
+			if tc.inPath {
+				wantStatus = " is already in PATH."
+			}
+			if !strings.Contains(message, installDir+wantStatus) {
+				t.Fatalf("unexpected PATH status: %s", message)
+			}
+			if tc.shadowed && !strings.Contains(message, "another nook first: "+filepath.Join(bin, "nook")) {
+				t.Fatalf("missing shadowed nook warning: %s", message)
+			}
+			_, hints, hasHint := strings.Cut(message, "  Bash/Zsh/sh: ")
+			if tc.inPath && !tc.shadowed {
+				if hasHint || !strings.Contains(message, "Verify with: nook --version") {
+					t.Fatalf("unexpected PATH hint: %s", message)
+				}
+				return
+			}
+			if !hasHint || !strings.Contains(hints, "fish_add_path --path --move") || !strings.Contains(hints, "$env.PATH = ") {
+				t.Fatalf("missing shell hints: %s", message)
+			}
+			hint, _, _ := strings.Cut(hints, "\n")
+			verify := exec.Command("/bin/sh", "-ec", hint+"\ncommand -v nook")
+			verify.Env = cmd.Env
+			found, err := verify.CombinedOutput()
+			if err != nil || strings.TrimSpace(string(found)) != destination {
+				t.Fatalf("PATH hint %q found wrong nook: %v: %s", hint, err, found)
 			}
 		})
 	}

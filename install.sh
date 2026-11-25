@@ -11,6 +11,46 @@ download() {
         --location --retry 3 --output "$2" "$1"
 }
 
+path_contains_dir() {
+    path_entries=${PATH-}:
+    while [ -n "$path_entries" ]; do
+        path_entry=${path_entries%%:*}
+        [ "${path_entry:-.}" -ef "$1" ] && return 0
+        path_entries=${path_entries#*:}
+    done
+    return 1
+}
+
+print_path_hint() {
+    resolved=$(command -v nook || true)
+    if path_contains_dir "$install_dir"; then
+        printf '%s is already in PATH.\n' "$install_dir"
+        if [ -n "$resolved" ] && [ "$resolved" -ef "$destination" ]; then
+            printf 'Verify with: nook --version\n'
+            return
+        fi
+    else
+        printf '%s is not in PATH.\n' "$install_dir"
+    fi
+    if [ -n "$resolved" ] && ! [ "$resolved" -ef "$destination" ]; then
+        printf 'Your PATH currently finds another nook first: %s\n' "$resolved"
+    fi
+
+    case "$install_dir" in
+        *:*) printf 'A directory containing a colon cannot be added to PATH. Run %s directly.\n' "$destination"; return ;;
+    esac
+
+    # Quote the path for each shell; NOOK_INSTALL_DIR can contain spaces and quotes.
+    sh_dir=$(printf '%s\n' "$install_dir" | sed "s/'/'\\\\''/g")
+    fish_dir=$(printf '%s\n' "$install_dir" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g")
+    nu_dir=$(printf '%s\n' "$install_dir" | sed 's/[\\"]/\\&/g')
+    printf 'To use nook in your current shell, run one of these (no config changes):\n'
+    printf "  Bash/Zsh/sh: export PATH='%s':\"\$PATH\"\n" "$sh_dir"
+    printf "  Fish:        fish_add_path --path --move -- '%s'\n" "$fish_dir"
+    printf "  Nushell:     \$env.PATH = (\$env.PATH | prepend \"%s\")\n" "$nu_dir"
+    printf 'Then verify with: nook --version\n'
+}
+
 main() {
     releases=https://github.com/flobilosaurus/agentnook/releases
     version_pattern='v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?'
@@ -96,10 +136,7 @@ main() {
     staged=
 
     printf 'Installed nook %s to %s\n' "$tag" "$destination"
-    if [ "$(command -v nook || true)" != "$destination" ]; then
-        printf 'If nook is not found or another version runs, put %s first in your PATH.\n' "$install_dir" >&2
-    fi
-    printf 'Verify with: nook --version\n'
+    print_path_hint
 }
 
 main "$@"
