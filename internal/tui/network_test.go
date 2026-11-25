@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -13,210 +14,139 @@ import (
 )
 
 func networkEntry(id, target string) egress.Entry {
-	return egress.Entry{Info: egress.Info{Session: "session", Project: "/project", Profile: "work", Agent: "agent"},
-		Request: egress.Request{ID: id, Target: target, Deadline: time.Now().Add(10 * time.Second)}}
+	return egress.Entry{Info: egress.Info{Session: "session", Profile: "work", Project: "/code/agentnook", Agent: "pi"},
+		Request: egress.Request{ID: id, Machine: "engine-vm", Target: target, Deadline: time.Now().Add(time.Minute)}}
 }
 
-func networkKey(m networkModel, key rune) (networkModel, tea.Cmd) {
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+func networkUpdate(m networkModel, msg tea.Msg) (networkModel, tea.Cmd) {
+	next, cmd := m.Update(msg)
 	return next.(networkModel), cmd
 }
 
-func TestNetworkRequiresExplicitStableSelection(t *testing.T) {
-	var decided egress.Entry
+func networkKey(m networkModel, key string) (networkModel, tea.Cmd) {
+	next, cmd := m.key(key)
+	return next.(networkModel), cmd
+}
+
+func networkLive(m networkModel, entries ...egress.Entry) networkModel {
+	m, _ = networkUpdate(m, networkLiveLoaded{survey: egress.Survey{Requests: entries}})
+	return m
+}
+
+func TestNetworkSelectionCannotRetargetToAnotherRequest(t *testing.T) {
+	var got egress.Entry
 	var choice string
-	m := newNetworkModel("/home", nil, func(e egress.Entry, c string) error { decided, choice = e, c; return nil })
-	m.historyMode = false
-	a, b := networkEntry("a", "203.0.113.1:443"), networkEntry("b", "203.0.113.2:443")
-	next, _ := m.Update(networkLoaded{survey: egress.Survey{Sessions: 1, Requests: []egress.Entry{a, b}}})
-	m = next.(networkModel)
-	if m.selection != "" {
-		t.Fatal("initial automatic selection")
+	m := newNetworkModel("/data", egress.HistoryQuery{}, func(entry egress.Entry, value string) error {
+		got, choice = entry, value
+		return nil
+	})
+	a := networkEntry("a", "203.0.113.1:80")
+	b := networkEntry("b", "203.0.113.2:80")
+	m = networkLive(m, a, b)
+	if _, cmd := networkKey(m, "a"); cmd != nil {
+		t.Fatal("automatically armed request")
 	}
-	m, cmd := networkKey(m, 'a')
-	if cmd != nil {
-		t.Fatal("approval without selection")
+	m, _ = networkKey(m, "j")
+	armed := m.selected.request
+	m = networkLive(m, b, a)
+	if m.selected.request != armed {
+		t.Fatal("refresh retargeted request")
 	}
-	m, _ = networkKey(m, 'j')
-	if m.selection != a.Key() {
-		t.Fatal(m.selection)
+	m = networkLive(m, b)
+	if _, cmd := networkKey(m, "s"); cmd != nil || m.selected.request != "" {
+		t.Fatal("selection transferred to another request")
 	}
-	// An earlier group inserts a leaf before the selection.
-	b.Info.Profile = "personal"
-	next, _ = m.Update(networkLoaded{survey: egress.Survey{Requests: []egress.Entry{a, b}}})
-	m = next.(networkModel)
-	if m.selectedIndex() != 1 {
-		t.Fatal("selection drifted")
+	m, _ = networkKey(m, "j")
+	m, cmd := networkKey(m, "s")
+	if cmd == nil || !m.busy || m.selected.request != "" {
+		t.Fatal("decision not issued or selection remains armed")
 	}
-	m, cmd = networkKey(m, 's')
-	if cmd == nil || !m.busy {
-		t.Fatal("missing decision command")
-	}
-	result := cmd()
-	if decided.Key() != a.Key() || choice != "session" {
-		t.Fatal(decided, choice)
-	}
-	m, cmd = networkKey(m, 'a')
-	if cmd != nil {
-		t.Fatal("double approval while busy")
-	}
-	next, _ = m.Update(result)
-	m = next.(networkModel)
-	if m.busy || m.selection != "" {
-		t.Fatal(m)
-	}
-	m, _ = networkKey(m, 'j')
-	next, _ = m.Update(networkLoaded{survey: egress.Survey{Requests: []egress.Entry{a}}})
-	m = next.(networkModel)
-	m, cmd = networkKey(m, 'a')
-	if m.selection != "" || cmd != nil {
-		t.Fatal("expired selection transferred approval")
+	m, _ = networkUpdate(m, cmd())
+	if got.Key() != b.Key() || choice != "session" || !strings.Contains(m.View(), "Decision sent: session") {
+		t.Fatal(got, choice, m.View())
 	}
 }
 
-func TestNetworkDecisionKeysAndErrors(t *testing.T) {
-	for key, want := range map[rune]string{'a': "once", 's': "session", 'd': "deny"} {
-		var choice string
-		m := newNetworkModel("/home", nil, func(_ egress.Entry, c string) error { choice = c; return errors.New("expired") })
-		m.historyMode = false
-		entry := networkEntry("a", "203.0.113.1:443")
-		m.survey.Requests, m.selection = []egress.Entry{entry}, entry.Key()
-		m, cmd := networkKey(m, key)
-		next, _ := m.Update(cmd())
-		if choice != want || !strings.Contains(next.(networkModel).status, "expired") {
-			t.Fatal(choice, want)
-		}
+func TestNetworkApprovalGuardsAndErrors(t *testing.T) {
+	for _, key := range []string{"a", "s", "d"} {
+		t.Run(key, func(t *testing.T) {
+			m := newNetworkModel("/data", egress.HistoryQuery{}, func(egress.Entry, string) error { return errors.New("broker stopped") })
+			entry := networkEntry("a", "[abcd:abcd:abcd:abcd:abcd:abcd:abcd:abcd]:65535")
+			entry.Info.Project = "/code/" + strings.Repeat("project", 12)
+			m = networkLive(m, entry)
+			m, _ = networkKey(m, "j")
+			m.width, m.height = 48, 22
+			view := ansi.Strip(m.View())
+			if !strings.Contains(view, "\n"+entry.Request.Target+"\n") || !strings.Contains(view, "VM engine-vm") {
+				t.Fatal("exact destination and VM must fit", view)
+			}
+			narrow := m
+			narrow.width = 47
+			if _, cmd := networkKey(narrow, key); cmd != nil {
+				t.Fatal("approved in undersized terminal")
+			}
+			expired := m
+			expired.requests = append([]egress.Entry(nil), m.requests...)
+			expired.requests[0].Request.Deadline = time.Now().Add(-time.Second)
+			if result, cmd := networkKey(expired, key); cmd != nil || result.selected.request != "" || !strings.Contains(result.decision, "expired") {
+				t.Fatal("approved expired request")
+			}
+			invalid := m
+			invalid.requests = append([]egress.Entry(nil), m.requests...)
+			invalid.requests[0].Request.Target = strings.Repeat("x", 49)
+			if _, cmd := networkKey(invalid, key); cmd != nil {
+				t.Fatal("approved a truncated destination")
+			}
+			m, cmd := networkKey(m, key)
+			if cmd == nil {
+				t.Fatal("valid decision not sent")
+			}
+			m, _ = networkUpdate(m, cmd())
+			if !strings.Contains(m.View(), "broker stopped") || m.busy {
+				t.Fatal(m.View())
+			}
+		})
 	}
 }
 
-func TestNetworkExpiryBeforeRefreshDisarmsRequest(t *testing.T) {
-	m := newNetworkModel("/home", nil, nil)
-	m.historyMode = false
-	entry := networkEntry("a", "203.0.113.1:80")
-	entry.Request.Deadline = time.Now().Add(-time.Second)
-	m.survey.Requests, m.selection = []egress.Entry{entry, networkEntry("b", "203.0.113.2:80")}, entry.Key()
-	m, cmd := networkKey(m, 'a')
-	if cmd != nil || m.selection != "" || !strings.Contains(m.status, "expired") {
-		t.Fatal("expired request stayed armed")
-	}
-}
-
-func TestNetworkViewShowsHTTPHostBeforeSelection(t *testing.T) {
-	m := newNetworkModel("/home", nil, nil)
-	m.historyMode = false
-	entry := networkEntry("a", "203.0.113.1:80")
-	entry.Request.HTTPHost = "github.com"
-	m.survey.Requests = []egress.Entry{entry, networkEntry("b", "203.0.113.2:80")}
-	view := ansi.Strip(m.View())
-	if !strings.Contains(view, "github.com (HTTP Host)* · 203.0.113.1:80 ·") ||
-		!strings.Contains(view, "203.0.113.2:80 ·") || strings.Contains(view, "TCP destination:") {
-		t.Fatal(view)
-	}
-	m.selection = entry.Key()
-	view = ansi.Strip(m.View())
-	if !strings.Contains(view, "TCP destination: 203.0.113.1:80") ||
-		!strings.Contains(view, "HTTP Host (unverified): github.com") {
-		t.Fatal(view)
-	}
-}
-
-func TestNetworkApprovalsGroupByProfileAndVMLaunch(t *testing.T) {
-	m := newNetworkModel("/home", nil, nil)
-	m.historyMode = false
-	makeEntry := func(id, target, profile, session, vm string, seconds int) egress.Entry {
-		e := networkEntry(id, target)
-		e.Info.Profile, e.Info.Session, e.Request.Machine = profile, session, vm
-		e.Request.Deadline = time.Now().Add(time.Duration(seconds) * time.Second)
-		return e
-	}
-	a := makeEntry("a", "203.0.113.1:80", "personal", "one", "vm-1", 10)
-	b := makeEntry("b", "203.0.113.2:443", "personal", "one", "vm-1", 6)
-	b.Request.Hint = "tls.example"
-	c := makeEntry("a", "203.0.113.3:80", "personal", "two", "vm-1", 10)
-	d := makeEntry("d", "203.0.113.4:80", "personal", "two", "vm-2", 6)
-	e := makeEntry("e", "203.0.113.5:80", "work", "three", "vm-3", 1)
-	raw := []egress.Entry{e, a, c, d, b}
-	next, _ := m.Update(networkLoaded{survey: egress.Survey{Requests: raw}})
-	m = next.(networkModel)
-	view := ansi.Strip(m.View())
-	want := []string{
-		"├─ Profile personal · 4 pending",
-		"│  ├─ VM agent · vm-1 · 2 pending",
-		"│  │  ├─   tls.example (TLS SNI)* · 203.0.113.2:443",
-		"│  │  └─   203.0.113.1:80",
-		"│  ├─ VM agent · vm-1 · 1 pending",
-		"│  │  └─   203.0.113.3:80",
-		"│  └─ VM agent · vm-2 · 1 pending",
-		"│     └─   203.0.113.4:80",
-		"└─ Profile work · 1 pending",
-		"   └─ VM agent · vm-3 · 1 pending",
-		"      └─   203.0.113.5:80",
-	}
-	remaining := view
-	for _, row := range want {
-		_, rest, ok := strings.Cut(remaining, row)
-		if !ok {
-			t.Fatalf("missing ordered row %q:\n%s", row, view)
-		}
-		remaining = rest
-	}
-	if raw[0].Key() != e.Key() || m.selection != "" {
-		t.Fatal("input mutated or request automatically selected")
-	}
-	for _, request := range []egress.Entry{b, a, c, d, e} {
-		m, _ = networkKey(m, 'j')
-		if m.selection != request.Key() || !strings.Contains(ansi.Strip(m.View()), "▸ ") {
-			t.Fatalf("j selected %q, want %q", m.selection, request.Key())
-		}
-	}
-	m, _ = networkKey(m, 'k')
-	if m.selection != d.Key() {
-		t.Fatal("k did not skip across group headings")
-	}
-}
-
-func TestNetworkApprovalWindowKeepsSelectedRequestAndAncestors(t *testing.T) {
-	m := newNetworkModel("/home", nil, nil)
-	m.historyMode, m.width, m.height = false, 48, 22
+func TestNetworkApprovalGroupingAndVisibleSelection(t *testing.T) {
+	m := newNetworkModel("/data", egress.HistoryQuery{}, nil)
 	var requests []egress.Entry
-	address := "[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]:65535"
-	for i, profile := range []string{"first", "second", "third", "last"} {
-		e := networkEntry(profile, address)
-		e.Info.Profile, e.Request.Machine = profile, "vm-"+profile
-		e.Request.HTTPHost = strings.Repeat("long-", 35) + "example"
+	for i := range 15 {
+		e := networkEntry(fmt.Sprint(i), fmt.Sprintf("203.0.113.%d:80", i+1))
+		e.Info.Session = fmt.Sprintf("session-%02d", i)
+		e.Info.Profile = fmt.Sprintf("profile-%02d", i)
 		requests = append(requests, e)
-		if i == 3 {
-			m.selection = e.Key()
-		}
 	}
-	next, _ := m.Update(networkLoaded{survey: egress.Survey{Requests: requests}})
-	m = next.(networkModel)
-	view := ansi.Strip(m.View())
-	for _, marker := range []string{"Requests", "Profile last", "VM agent · vm-last", "▸ ", "TCP destination:\n" + address, "d deny · Tab history · q quit"} {
-		if !strings.Contains(view, marker) {
-			t.Fatalf("missing %q:\n%s", marker, view)
+	requests[14].Request.HTTPHost = "github.com\x1b]52;x\a"
+	m = networkLive(m, requests...)
+	m.timeline = demoTimeline()
+	m.timeline.Machines = append(m.timeline.Machines, egress.MachineHistory{Machine: "nook-run-identified", Info: requests[14].Info})
+	m.selected = networkKeyID{request: requests[14].Key()}
+	for _, size := range [][2]int{{120, 50}, {80, 24}, {48, 22}, {20, 10}, {1, 1}} {
+		m.width, m.height = size[0], size[1]
+		view := m.View()
+		assertTerminalBounds(t, view, m.width, m.height)
+		if m.width >= networkMinWidth {
+			plain := ansi.Strip(view)
+			for _, value := range []string{"Profile profile-14", "agentnook · VM identified", "▸ ", "TCP destination: 203.0.113.15:80", "HTTP Host (unverified): github.com"} {
+				if !strings.Contains(plain, value) {
+					t.Fatal("missing", value, plain)
+				}
+			}
 		}
-	}
-	if lines := strings.Split(view, "\n"); len(lines) > m.height {
-		t.Fatalf("view has %d rows, terminal has %d", len(lines), m.height)
+		if strings.Contains(view, "\x1b]52") || strings.Contains(view, "\a") {
+			t.Fatal(view)
+		}
 	}
 }
 
-func TestNetworkViewEscapesGuestHintsAndFitsWidth(t *testing.T) {
-	m := newNetworkModel("/home", nil, nil)
-	m.historyMode = false
-	entry := networkEntry("a", "203.0.113.1:443")
-	entry.Request.Hint = "evil\x1b[31m\nname"
-	entry.Request.HTTPHost = "evil\x1b[31m\nhost"
-	m.survey.Requests, m.selection = []egress.Entry{entry}, entry.Key()
-	m.width = 60
-	view := ansi.Strip(m.View())
-	if strings.Contains(view, "\x1b") || strings.Contains(view, "\nname") || strings.Contains(view, "\nhost") || !strings.Contains(view, "unverified") {
-		t.Fatal(view)
-	}
-	for _, line := range strings.Split(view, "\n") {
-		if ansi.StringWidth(line) > m.width {
-			t.Fatal(line)
-		}
+func TestNetworkPendingIsIndependentOfHistoryFailure(t *testing.T) {
+	m := newNetworkModel("/data", egress.HistoryQuery{}, func(egress.Entry, string) error { return nil })
+	m, _ = networkUpdate(m, networkHistoryLoaded{err: errors.New("unreadable archive")})
+	m = networkLive(m, networkEntry("a", "203.0.113.1:80"))
+	m, _ = networkKey(m, "j")
+	if _, cmd := networkKey(m, "a"); cmd == nil || !strings.Contains(m.View(), "unreadable archive") {
+		t.Fatal(m.View())
 	}
 }

@@ -114,7 +114,12 @@ func Launch(binary string, args []string, streams IO) (code int) {
 		start = append(start, "--mediated-egress", "--egress-interceptor", streams.Mediation.Address)
 		startEnv = []string{"SMOLVM_INTERCEPTOR_TOKEN=" + streams.Mediation.Token}
 	}
+	networkMode := "full"
+	if mediated {
+		networkMode = "ask"
+	}
 	create = append(create, "--label", "agentnook.image="+source,
+		"--label", "agentnook.network="+networkMode,
 		"--label", "agentnook.ephemeral=true", "--", "sleep", "infinity")
 	execute = append(execute, "--")
 	execute = append(execute, args[split+1:]...)

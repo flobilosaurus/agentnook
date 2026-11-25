@@ -95,7 +95,7 @@ exit 0
 			execute, _ := os.ReadFile(log + ".exec")
 			created := strings.Split(strings.TrimSuffix(string(create), "\x00"), "\x00")
 			executed := strings.Split(strings.TrimSuffix(string(execute), "\x00"), "\x00")
-			for _, want := range []string{"agentnook.image=/private/image.smolmachine", "agentnook.ephemeral=true", "/project with spaces:/workspace", "/profile:/root", "--from", "--block-private", "10.20.0.0/16"} {
+			for _, want := range []string{"agentnook.image=/private/image.smolmachine", "agentnook.network=full", "agentnook.ephemeral=true", "/project with spaces:/workspace", "/profile:/root", "--from", "--block-private", "10.20.0.0/16"} {
 				if !strings.Contains(string(create), want+"\x00") {
 					t.Fatal(created)
 				}
@@ -158,6 +158,9 @@ printf '%s' "${SMOLVM_INTERCEPTOR_TOKEN:-}" > "$VM_TEST_LOG.$2.token"
 		data, err := os.ReadFile(log + "." + stage)
 		if err != nil || bytes.Contains(data, []byte(token)) {
 			t.Fatal(stage, err, "token leaked into argv")
+		}
+		if stage == "create" && !bytes.Contains(data, []byte("agentnook.network=ask\x00")) {
+			t.Fatal("missing network mode label")
 		}
 		env, _ := os.ReadFile(log + "." + stage + ".token")
 		if stage == "start" {

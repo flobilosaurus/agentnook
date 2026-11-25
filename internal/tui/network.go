@@ -2,8 +2,8 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"io"
+	"maps"
 	"strings"
 	"time"
 
@@ -14,17 +14,17 @@ import (
 	"github.com/flobilosaurus/agentnook/internal/fleet"
 )
 
+// NetworkLoader is the CLI's injectable survey reader. The interactive view
+// polls approvals and stored history independently to keep decisions responsive.
 type NetworkLoader func(...egress.HistoryQuery) (egress.Survey, error)
 type NetworkDecider func(egress.Entry, string) error
 
-func WatchNetwork(root string, initial egress.HistoryQuery, load NetworkLoader, decide NetworkDecider, in io.Reader, out io.Writer) error {
+func WatchNetwork(root string, initial egress.HistoryQuery, decide NetworkDecider, in io.Reader, out io.Writer) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m := newNetworkModel(root, load, decide)
-	m.machine, m.before = initial.Machine, initial.Before
-	m.historyMode = initial.Machine != ""
-	m.showAll = m.historyMode
-	// Keep runtime discovery off the approval polling path.
+	m := newNetworkModel(root, initial, decide)
+	m.loadLive = func() (egress.Survey, error) { return egress.Load(root) }
+	m.loadHistory = func(q egress.TimelineQuery) (egress.Timeline, error) { return egress.ReadTimeline(ctx, root, q) }
 	m.checkRuntime = func() tea.Msg {
 		running, err := fleet.RunningMachineNames(ctx)
 		return networkRuntimeLoaded{running: running, err: err}
@@ -33,258 +33,344 @@ func WatchNetwork(root string, initial egress.HistoryQuery, load NetworkLoader, 
 	return err
 }
 
-type networkTick struct{}
+type networkLiveTick struct{}
+type networkHistoryTick uint64
 type networkRuntimeTick struct{}
 type networkRuntimeLoaded struct {
 	running map[string]bool
 	err     error
 }
-type networkLoaded struct {
+type networkLiveLoaded struct {
 	survey egress.Survey
 	err    error
+}
+type networkHistoryLoaded struct {
+	generation uint64
+	timeline   egress.Timeline
+	err        error
 }
 type networkDecided struct {
 	choice string
 	err    error
 }
 
+type networkKeyID struct {
+	request string
+	machine string
+	seq     uint64
+}
+
+type networkLeaf struct {
+	id      networkKeyID
+	row     monitorRow
+	request *egress.Entry
+	event   *egress.HistoryRecord
+}
+
+type timelinePosition struct {
+	before int64
+	cursor map[string]int64
+}
+
 type networkModel struct {
 	root          string
-	load          NetworkLoader
-	decide        NetworkDecider
-	survey        egress.Survey
-	selection     string // Pending identity, never a history cursor.
-	status        string
-	busy          bool
-	width, height int
-	historyMode   bool
+	loadLive      func() (egress.Survey, error)
+	loadHistory   func(egress.TimelineQuery) (egress.Timeline, error)
 	checkRuntime  tea.Cmd
-	running       map[string]bool // nil until runtime status is available.
-	runtimeErr    error
-	showAll       bool
-	machine       string
-	before        int64
-	newerPages    []int64
-	pageLoading   bool
+	decide        NetworkDecider
+	width, height int
+
+	requests     []egress.Entry
+	timeline     egress.Timeline
+	selected     networkKeyID
+	busy         bool
+	decision     string
+	liveProblem  string
+	historyErr   error
+	runtimeErr   error
+	running      map[string]bool
+	liveLoaded   bool
+	historyReady bool
+
+	archive     bool
+	machine     string // --machine opens a scoped, read-only history.
+	runningOnly bool
+	position    timelinePosition
+	newer       []timelinePosition
+	generation  uint64 // Discard async pages from before a mode/filter/page change.
 }
 
-func newNetworkModel(root string, load NetworkLoader, decide NetworkDecider) networkModel {
-	return networkModel{root: root, load: load, decide: decide, width: 90, height: 26}
+func newNetworkModel(root string, initial egress.HistoryQuery, decide NetworkDecider) networkModel {
+	return networkModel{root: root, width: 90, height: 26, decide: decide,
+		archive: initial.Machine != "", machine: initial.Machine, position: timelinePosition{before: initial.Before}}
 }
 
-func (m networkModel) poll() tea.Cmd {
-	query := egress.HistoryQuery{Machine: m.machine, Before: m.before, Limit: m.pageLimit()}
+func (m networkModel) livePoll() tea.Cmd {
+	if m.machine != "" || m.loadLive == nil {
+		return nil
+	}
 	return func() tea.Msg {
-		survey, err := m.load(query)
-		return networkLoaded{survey: survey, err: err}
+		survey, err := m.loadLive()
+		return networkLiveLoaded{survey, err}
 	}
 }
-func (m networkModel) Init() tea.Cmd { return tea.Batch(m.poll(), m.checkRuntime) }
 
-func (m networkModel) selectedIndex() int {
-	for i, entry := range m.survey.Requests {
-		if entry.Key() == m.selection {
+const networkRecentLimit, networkHistoryLimit = 3, 5
+
+func (m networkModel) historyQuery() egress.TimelineQuery {
+	q := egress.TimelineQuery{Limit: networkRecentLimit}
+	if m.archive {
+		q.Limit, q.Machine, q.Before, q.Cursor = networkHistoryLimit, m.machine, m.position.before, m.position.cursor
+		if m.runningOnly {
+			q.Running = m.running
+			if q.Running == nil {
+				q.Running = map[string]bool{} // Unconfirmed is not running.
+			}
+		}
+	}
+	return q
+}
+
+func (m networkModel) historyPoll() tea.Cmd {
+	if m.loadHistory == nil {
+		return nil
+	}
+	q, generation := m.historyQuery(), m.generation
+	return func() tea.Msg {
+		timeline, err := m.loadHistory(q)
+		return networkHistoryLoaded{generation, timeline, err}
+	}
+}
+
+func (m networkModel) Init() tea.Cmd {
+	return tea.Batch(m.livePoll(), m.historyPoll(), m.checkRuntime)
+}
+
+func (m *networkModel) reloadHistory() tea.Cmd {
+	m.generation++
+	m.historyReady, m.historyErr = false, nil
+	m.selected = networkKeyID{}
+	m.timeline.Records, m.timeline.Next = nil, nil
+	return m.historyPoll()
+}
+
+func (m networkModel) leaves() (pending, history []networkLeaf) {
+	if !m.archive {
+		pending = m.approvalLeaves(time.Now())
+	}
+	return pending, m.historyLeaves()
+}
+
+func (m networkModel) current(leaves []networkLeaf) int {
+	for i, entry := range leaves {
+		if entry.id == m.selected {
 			return i
 		}
 	}
 	return -1
 }
 
-func (m networkModel) visibleMachines() []egress.MachineHistory {
-	if m.showAll {
-		return m.survey.History.Machines
-	}
-	var machines []egress.MachineHistory
-	for _, machine := range m.survey.History.Machines {
-		if m.running[machine.Machine] {
-			machines = append(machines, machine)
-		}
-	}
-	return machines
-}
-
-func (m networkModel) machineIndex(machines []egress.MachineHistory) int {
-	for i, machine := range machines {
-		if machine.Machine == m.machine {
-			return i
-		}
-	}
-	return -1
-}
-
-func (m *networkModel) selectMachine(name string) {
-	if m.machine != name {
-		m.machine = name
-		m.before, m.newerPages, m.pageLoading = 0, nil, true
-	}
-}
-
-func (m *networkModel) syncMachineSelection() {
-	machines := m.visibleMachines()
-	if m.machineIndex(machines) >= 0 {
+func (m *networkModel) checkSelection() {
+	if m.selected == (networkKeyID{}) {
 		return
 	}
-	if len(machines) == 0 {
-		m.selectMachine("")
-		return
+	pending, history := m.leaves()
+	if m.current(pending) < 0 && m.current(history) < 0 {
+		m.selected = networkKeyID{}
 	}
-	m.selectMachine(machines[0].Machine)
 }
 
 func (m networkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width, m.height = max(20, msg.Width), max(10, msg.Height)
-	case networkTick:
-		return m, m.poll()
+		m.width, m.height = max(1, msg.Width), max(1, msg.Height)
+	case networkLiveTick:
+		return m, m.livePoll()
+	case networkHistoryTick:
+		if uint64(msg) == m.generation {
+			return m, m.historyPoll()
+		}
 	case networkRuntimeTick:
 		return m, m.checkRuntime
 	case networkRuntimeLoaded:
-		m.running, m.runtimeErr = msg.running, msg.err
-		// A failed lookup is not evidence that VMs ended. Keep the selection
-		// for recovery, but show no unconfirmed rows in the running-only view.
-		if msg.err == nil && !m.showAll {
-			m.syncMachineSelection()
-			m.finishPageLoad()
-		}
-		return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return networkRuntimeTick{} })
-	case networkLoaded:
-		m.survey = msg.survey
-		m.survey.Requests = approvalOrder(msg.survey.Requests)
-		m.survey.History.Machines = historyOrder(msg.survey.History.Machines)
 		if msg.err != nil {
-			m.status = msg.err.Error()
-		} else if msg.survey.Warning != "" {
-			m.status = msg.survey.Warning
+			msg.running = nil
 		}
-		if m.selectedIndex() < 0 {
-			m.selection = "" // Never silently retarget an approval after expiry.
+		changed := !maps.Equal(m.running, msg.running)
+		m.running, m.runtimeErr = msg.running, msg.err
+		tick := tea.Tick(time.Second, func(time.Time) tea.Msg { return networkRuntimeTick{} })
+		if m.archive && m.runningOnly && changed {
+			m.position, m.newer = timelinePosition{}, nil
+			cmd := m.reloadHistory()
+			return m, tea.Batch(cmd, tick)
 		}
-		if msg.err == nil && (m.showAll || m.running != nil) {
-			m.syncMachineSelection()
+		return m, tick
+	case networkLiveLoaded:
+		m.liveLoaded = true
+		m.requests = approvalOrder(msg.survey.Requests)
+		m.liveProblem = msg.survey.Warning
+		if msg.err != nil {
+			m.requests, m.liveProblem = nil, msg.err.Error()
 		}
-		m.finishPageLoad()
-		return m, tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg { return networkTick{} })
+		m.checkSelection()
+		return m, tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg { return networkLiveTick{} })
+	case networkHistoryLoaded:
+		if msg.generation != m.generation {
+			break
+		}
+		m.historyErr, m.historyReady = msg.err, true
+		if msg.err == nil {
+			m.timeline = msg.timeline
+		}
+		m.checkSelection()
+		if m.archive && m.selected == (networkKeyID{}) {
+			if history := m.historyLeaves(); len(history) > 0 {
+				m.selected = history[0].id
+			}
+		}
+		return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return networkHistoryTick(msg.generation) })
 	case networkDecided:
 		m.busy = false
 		if msg.err != nil {
-			m.status = msg.err.Error()
+			m.decision = msg.err.Error()
 		} else {
-			m.status = "Decision sent: " + msg.choice
+			m.decision = "Decision sent: " + msg.choice
 		}
 	case tea.KeyMsg:
-		key := msg.String()
-		if key == "q" || key == "esc" || key == "ctrl+c" {
-			return m, tea.Quit
-		}
-		if key == "tab" || key == "shift+tab" {
-			m.historyMode = !m.historyMode
-			m.selection = "" // Switching tabs never arms a request.
-			return m, nil
-		}
-		if m.historyMode {
-			m = m.historyKey(key)
-			return m, nil // Archived rows can NEVER receive approvals.
-		}
-		if m.busy || m.width < 48 || m.height < 22 {
-			return m, nil
-		}
-		i := m.selectedIndex()
-		switch key {
-		case "up", "k", "down", "j":
-			if len(m.survey.Requests) == 0 {
-				break
-			}
-			if i < 0 {
-				i = 0
-			} else if key == "up" || key == "k" {
-				i = max(0, i-1)
-			} else {
-				i = min(len(m.survey.Requests)-1, i+1)
-			}
-			m.selection = m.survey.Requests[i].Key()
-		case "a", "s", "d":
-			if i < 0 {
-				break
-			}
-			entry := m.survey.Requests[i]
-			if !time.Now().Before(entry.Request.Deadline) {
-				m.selection = ""
-				m.status = "Request expired; retry the connection."
-				break
-			}
-			choice := map[string]string{"a": "once", "s": "session", "d": "deny"}[key]
-			m.selection, m.busy = "", true
-			return m, func() tea.Msg { return networkDecided{choice: choice, err: m.decide(entry, choice)} }
-		}
+		return m.key(msg.String())
 	}
 	return m, nil
 }
 
-func (m *networkModel) finishPageLoad() {
-	if m.hasCurrentHistoryPage() {
-		m.pageLoading = false
+const networkMinWidth, networkMinHeight = 48, 22
+
+func (m networkModel) key(key string) (tea.Model, tea.Cmd) {
+	if key == "q" || key == "esc" || key == "ctrl+c" {
+		return m, tea.Quit
+	}
+	if (key == "h" || key == "tab" || key == "shift+tab") && m.machine == "" {
+		m.archive = !m.archive
+		m.position, m.newer = timelinePosition{}, nil
+		cmd := m.reloadHistory()
+		return m, cmd
+	}
+	if m.width < networkMinWidth || m.height < networkMinHeight {
+		return m, nil
+	}
+	if m.archive {
+		switch {
+		case key == "f" && m.machine == "":
+			m.runningOnly = !m.runningOnly
+			m.position, m.newer = timelinePosition{}, nil
+		case key == "pgup" && m.historyReady && m.historyErr == nil && m.timeline.Next != nil:
+			m.newer = append(m.newer, m.position)
+			m.position = timelinePosition{cursor: m.timeline.Next}
+		case key == "pgdown" && m.historyReady && len(m.newer) > 0:
+			m.position = m.newer[len(m.newer)-1]
+			m.newer = m.newer[:len(m.newer)-1]
+		case key == "home":
+			m.position, m.newer = timelinePosition{}, nil
+		default:
+			return m.selectKey(key), nil // History never reaches the decider.
+		}
+		cmd := m.reloadHistory()
+		return m, cmd
+	}
+	switch key {
+	case "a", "s", "d":
+		if m.busy || m.selected.request == "" {
+			return m, nil
+		}
+		for _, entry := range m.requests {
+			if entry.Key() != m.selected.request {
+				continue
+			}
+			if !time.Now().Before(entry.Request.Deadline) {
+				m.selected, m.decision = networkKeyID{}, "Request expired; retry the connection."
+				return m, nil
+			}
+			target := entry.Request.Target
+			if target == "" || monitorText(target) != target || ansi.StringWidth(target) > m.width {
+				return m, nil // An exact, printable destination must fit on screen.
+			}
+			choice := map[string]string{"a": "once", "s": "session", "d": "deny"}[key]
+			m.selected, m.busy, m.decision = networkKeyID{}, true, "Sending decision…"
+			return m, func() tea.Msg { return networkDecided{choice, m.decide(entry, choice)} }
+		}
+		return m, nil
+	default:
+		return m.selectKey(key), nil
 	}
 }
 
-func (m networkModel) historyKey(key string) networkModel {
-	if key == "f" {
-		m.showAll = !m.showAll
-		if m.showAll || m.running != nil {
-			m.syncMachineSelection()
-			m.finishPageLoad()
-		}
+func (m networkModel) selectKey(key string) networkModel {
+	if key != "up" && key != "k" && key != "down" && key != "j" {
 		return m
 	}
-	machines := m.visibleMachines()
-	if len(machines) == 0 {
+	pending, history := m.leaves()
+	leaves := append(pending, history...)
+	if len(leaves) == 0 {
 		return m
 	}
-	switch key {
-	case "up", "k", "down", "j":
-		i := m.machineIndex(machines)
-		if i < 0 {
-			i = 0
-		} else if key == "up" || key == "k" {
-			i = max(0, i-1)
-		} else {
-			i = min(len(machines)-1, i+1)
-		}
-		m.selectMachine(machines[i].Machine)
-		m.finishPageLoad()
-	case "pgup":
-		page := m.survey.History.Page
-		if !m.pageLoading && m.hasCurrentHistoryPage() && page.HasOlder {
-			m.newerPages = append(m.newerPages, m.before)
-			m.before, m.pageLoading = page.NextBefore, true
-		}
-	case "pgdown":
-		if !m.pageLoading && len(m.newerPages) > 0 {
-			last := len(m.newerPages) - 1
-			m.before, m.pageLoading = m.newerPages[last], true
-			m.newerPages = m.newerPages[:last]
-		}
-	case "home":
-		m.before, m.newerPages, m.pageLoading = 0, nil, true
+	index := m.current(leaves)
+	if index < 0 {
+		index = 0
+	} else if key == "up" || key == "k" {
+		index = max(0, index-1)
+	} else {
+		index = min(len(leaves)-1, index+1)
 	}
+	m.selected, m.decision = leaves[index].id, ""
 	return m
 }
 
 func (m networkModel) View() string {
-	if m.width < 48 || m.height < 22 {
-		return ansi.Hardwrap("Network view needs at least 48 columns and 22 rows. Resize or q to quit; --json works at any size.", m.width, true)
+	if m.width < networkMinWidth || m.height < networkMinHeight {
+		lines := strings.Split(ansi.Hardwrap("Network needs at least 48×22. Resize or q to quit; --json works at any size.", m.width, true), "\n")
+		return strings.Join(lines[:min(len(lines), m.height)], "\n")
 	}
-	lines := []string{accent.Render("agentnook · Network"), "AGENTNOOK_HOME: " + fleetText(m.root),
-		fmt.Sprintf("%d live approval broker(s) · %d pending · %d VM histories", m.survey.Sessions, len(m.survey.Requests), len(m.survey.History.Machines))}
-	if m.historyMode {
-		lines = append(lines, "[History] · Tab → Approvals", "")
-		lines = append(lines, m.historyView()...)
+	pending, history := m.leaves()
+	pi, hi := m.current(pending), m.current(history)
+	lines := m.networkHeading()
+	details := m.networkDetails(pending, history, pi, hi)
+	footer := m.networkFooter(pi >= 0)
+	budget := m.height - len(lines) - len(details) - len(footer)
+	if m.archive {
+		lines = append(lines, monitorMuted.Render("Recorded decisions"))
+		lines = append(lines, m.eventList(history, hi, budget-1)...)
 	} else {
-		lines = append(lines, "[Approvals] · ↑↓/jk requests · Tab history", "")
-		lines = append(lines, m.approvalView(m.height-len(lines))...)
+		lines = append(lines, monitorMuted.Render("Pending requests"))
+		available := budget - 2 // One heading per section.
+		var requestLines []string
+		if len(pending) > 0 {
+			pendingBudget := available - 1
+			if len(history) != 0 {
+				pendingBudget = max(3, available-3)
+				if hi >= 0 {
+					pendingBudget = min(pendingBudget, max(3, available/2))
+				}
+			}
+			requestLines = monitorList(leafRows(pending), pi, m.width, pendingBudget)
+		} else if !m.liveLoaded {
+			requestLines = []string{"Checking for pending requests…"}
+		} else if m.liveProblem == "" {
+			requestLines = []string{"No pending connections."}
+		} else {
+			requestLines = []string{"Pending requests unavailable."}
+		}
+		lines = append(lines, requestLines...)
+		lines = append(lines, monitorMuted.Render("Recent decisions"))
+		lines = append(lines, m.eventList(history, hi, available-len(requestLines))...)
 	}
-	for i := range lines {
-		lines[i] = ansi.Truncate(lines[i], m.width, "…")
+	lines = append(lines, details...)
+	lines = append(lines, footer...)
+	return monitorView(lines, m.width)
+}
+
+func leafRows(leaves []networkLeaf) []monitorRow {
+	rows := make([]monitorRow, len(leaves))
+	for i, leaf := range leaves {
+		rows[i] = leaf.row
 	}
-	return strings.Join(lines, "\n")
+	return rows
 }

@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agentnook · Watch &amp; Network</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0c0f14;
+    --panel: #131820;
+    --bar: #191f29;
+    --line: #2e3745;
+    --ink: #edf1f6;
+    --muted: #adb7c6;
+    --accent: #9ac5ff;
+    --selected: #1d304a;
+    --attention: #f2cb87;
+    --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 42px 24px; }
+  h1, h2, h3, p, dl, dd, ul { margin: 0; }
+  h1 { font-size: clamp(1.65rem, 4vw, 2.25rem); letter-spacing: -.035em; }
+  .muted, dt { color: var(--muted); }
+  .attention { color: var(--attention); }
+  .intro { margin-bottom: 24px; }
+  .intro p { margin-top: 5px; }
+  .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }
+  .comparison > .terminal { display: grid; grid-row: span 5; grid-template-rows: subgrid; }
+  .terminal {
+    min-width: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    font: 13px/1.5 var(--mono);
+  }
+  .titlebar, .summary, .selection, .keys { padding-inline: 17px; }
+  .titlebar {
+    display: flex; justify-content: space-between; gap: 10px; align-items: center;
+    padding-block: 11px;
+    background: var(--bar);
+    border-bottom: 1px solid var(--line);
+  }
+  .titlebar h2, .selection h3 { font-size: inherit; font-weight: 650; }
+  .comparison .titlebar h2::before { content: '$ '; color: var(--muted); }
+  .summary { padding-block: 13px 3px; color: var(--muted); }
+  .summary-row { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; }
+  .summary a { color: var(--accent); text-underline-offset: 3px; }
+  .archive { max-width: 760px; margin: 24px auto 0; scroll-margin-top: 12px; }
+  .archive label { display: inline-flex; align-items: center; gap: 6px; }
+  .archive input { margin: 0; accent-color: var(--accent); }
+  .archive .older { margin: 8px 8px 2px; }
+  .list { padding: 0 9px 10px; }
+  .list ul { list-style: none; padding: 0; }
+  .group { margin: 10px 8px 4px; color: var(--muted); font-weight: 500; font-size: 12px; }
+  .profile-group { margin: 6px 0 9px; }
+  .profile-title { margin: 0 8px; font-size: 12px; font-weight: 650; }
+  .vm-title { margin: 4px 8px 1px 20px; color: var(--muted); font-size: 12px; font-weight: 500; }
+  .profile-group > ul, .vm-group ul { margin-inline-start: 12px; }
+  .vm-group .row { min-height: 28px; padding-block: 3px; }
+  .row {
+    display: grid;
+    grid-template-columns: .8em minmax(0, 1fr) auto;
+    gap: 7px;
+    align-items: baseline;
+    width: 100%;
+    min-height: 36px;
+    padding: 7px 8px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    text-align: left;
+  }
+  button { color: inherit; font: inherit; cursor: pointer; }
+  .row:hover { background: var(--bar); }
+  .row[aria-pressed="true"] { background: var(--selected); border-color: #42638c; }
+  .cursor { color: transparent; }
+  .row[aria-pressed="true"] .cursor { color: var(--accent); }
+  .item { min-width: 0; overflow-wrap: anywhere; }
+  .item small { color: var(--muted); font-size: inherit; }
+  .item .subtitle { display: block; margin-top: 1px; font-size: .92em; }
+  .status { text-align: right; max-width: 13ch; }
+  .selection { min-height: 179px; padding-block: 13px; border-top: 1px solid var(--line); }
+  .selection h3 { color: var(--accent); margin-bottom: 8px; overflow-wrap: anywhere; }
+  dl { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 3px 12px; }
+  dd { overflow-wrap: anywhere; }
+  .mounts { list-style: none; padding: 0; overflow-wrap: anywhere; }
+  .note { margin-top: 9px; color: var(--muted); font-size: 12px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .action, #reset {
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: transparent;
+  }
+  .action:hover, #reset:hover { background: var(--bar); border-color: var(--muted); }
+  :is(button, a, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .keys { padding-block: 9px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .after { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-top: 14px; }
+  #reset { font-size: 13px; }
+  @media (max-width: 820px) {
+    main { padding: 24px 14px; }
+    .comparison { grid-template-columns: minmax(0, 1fr); row-gap: 18px; }
+    .comparison > .terminal { grid-row: auto; grid-template-rows: auto; }
+    .selection { min-height: 0; }
+  }
+  @media (max-width: 420px) {
+    .terminal { font-size: 12px; }
+    .item small { display: block; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="intro">
+    <h1>Watch &amp; Network</h1>
+    <p class="muted">Each view has one list, one selection, and details below. Interactive prototype with sample data.</p>
+  </header>
+  <div class="comparison">
+    <section class="terminal" aria-labelledby="watch-title">
+      <header class="titlebar"><h2 id="watch-title">nook watch</h2><span class="muted">VMs</span></header>
+      <p class="summary">4 VMs · 3 projects · <span class="attention">1 with stale telemetry</span></p>
+      <div class="list" id="watch-list" role="group" aria-label="Select a VM"></div>
+      <section class="selection" id="watch-selection" aria-label="VM details" aria-live="polite"></section>
+      <footer class="keys">Select with ↑↓ / j k, click, or Enter</footer>
+    </section>
+    <section class="terminal" aria-labelledby="network-title">
+      <header class="titlebar"><h2 id="network-title">nook network</h2><span class="muted">Outbound</span></header>
+      <div class="summary summary-row"><p id="network-summary"></p><a href="#network-archive">Full history ↓</a></div>
+      <div class="list" id="network-list" role="group" aria-label="Select a request or event"></div>
+      <section class="selection" id="network-selection" aria-label="Network details" aria-live="polite"></section>
+      <footer class="keys">Select with ↑↓ / j k, click, or Enter</footer>
+    </section>
+  </div>
+  <section class="terminal archive" id="network-archive" tabindex="-1" aria-labelledby="archive-title">
+    <header class="titlebar"><h2 id="archive-title">Network History</h2><span class="muted">Read only</span></header>
+    <div class="summary summary-row">
+      <p id="archive-summary" aria-live="polite"></p>
+      <label><input id="live-only" type="checkbox"> Running VMs only</label>
+    </div>
+    <div class="list">
+      <div id="archive-list" role="group" aria-label="Select a history entry"></div>
+      <button class="action older" id="older-events" type="button">Show older events</button>
+    </div>
+    <section class="selection" id="archive-selection" aria-label="Event details" aria-live="polite"></section>
+    <footer class="keys">Select with ↑↓ / j k, click, or Enter</footer>
+  </section>
+  <div class="after">
+    <button type="button" id="reset">Reset demo</button>
+    <p class="muted">No connection to real VMs. All approvals and denials are simulated.</p>
+  </div>
+</main>
+<script>
+'use strict';
+
+const $ = id => document.getElementById(id);
+const machines = [
+  {id: 'a7f21c', project: 'agentnook', profile: 'private', agent: 'Pi', vm: 'Running', activity: 'Working', runtime: '12 min', limits: '2 vCPU · 2 GiB', network: 'ask'},
+  {id: 'b831de', project: 'agentnook', profile: 'work', agent: 'Claude', vm: 'Running', activity: 'Waiting', runtime: '38 min', limits: '4 vCPU · 4 GiB', network: 'ask'},
+  {id: 'c9d402', project: 'storefront', profile: 'work', agent: 'OpenCode', vm: 'Running', activity: 'Idle', runtime: '8 min', limits: '2 vCPU · 2 GiB', network: 'ask', extraMounts: [['~/code/design', '/mnt/design', 'ro']]},
+  {id: 'd2e790', project: 'docs', profile: 'private', agent: 'Pi', vm: 'Running', activity: 'Unknown', runtime: 'Unknown', limits: '2 vCPU · 2 GiB', network: 'full'}
+];
+const archivedMachines = [{id: 'f8c103', project: 'docs', profile: 'work', network: 'ask', ended: true}];
+const findMachine = id => machines.find(machine => machine.id === id) ?? archivedMachines.find(machine => machine.id === id);
+const requests = [
+  {id: 'r1', host: 'github.com', target: '203.0.113.28:80', protocol: 'TCP', vm: 'b831de'},
+  {id: 'r2', host: 'example.com', target: '198.51.100.26:80', protocol: 'TCP', vm: 'c9d402'}
+];
+const sampleHistory = [
+  {id: 'h1', target: 'github.com', protocol: 'DNS', vm: 'b831de', time: '14:44:06', verdict: 'Allowed', reason: 'DNS policy'},
+  {id: 'h2', target: '198.51.100.80:443', protocol: 'TCP', vm: 'a7f21c', time: '14:43:59', verdict: 'Allowed', reason: 'Allowed once'},
+  {id: 'h3', target: '192.0.2.54:443', protocol: 'TCP', vm: 'f8c103', time: '14:42:51', verdict: 'Denied', reason: 'Request timed out'},
+  {id: 'h4', target: '10.0.0.5:443', protocol: 'TCP', vm: 'd2e790', time: '14:42:10', verdict: 'Denied', reason: 'Private destination blocked'},
+  {id: 'h5', target: 'example.com', protocol: 'DNS', vm: 'b831de', time: '14:41:53', verdict: 'Allowed', reason: 'DNS policy'},
+  {id: 'h6', target: 'example.org', protocol: 'DNS', vm: 'f8c103', time: '14:41:20', verdict: 'Allowed', reason: 'DNS policy'},
+  {id: 'h7', target: '198.51.100.11:443', protocol: 'TCP', vm: 'c9d402', time: '14:40:55', verdict: 'Denied', reason: 'Denied manually'},
+  {id: 'h8', target: '203.0.113.9:443', protocol: 'TCP', vm: 'a7f21c', time: '14:39:08', verdict: 'Allowed', reason: 'Allowed for this VM run'}
+];
+const decisions = {
+  once: ['Allowed', 'Allowed once'],
+  session: ['Allowed', 'Allowed for this VM run'],
+  deny: ['Denied', 'Denied manually']
+};
+const archivePageSize = 5;
+let watchId, networkId, archiveId, archiveLimit, pending, history, feedback;
+
+function row(item, id, tabId) {
+  const selected = item.id === id;
+  return `<li><button class="row" type="button" data-id="${item.id}" aria-pressed="${selected}" tabindex="${item.id === tabId ? 0 : -1}">
+    <span class="cursor" aria-hidden="true">▸</span>
+    <span class="item">${item.label}${item.context ? ` <small>${item.context}</small>` : ''}${item.subtitle ? `<small class="subtitle">${item.subtitle}</small>` : ''}</span>
+    <span class="status ${item.attention ? 'attention' : 'muted'}">${item.status}</span>
+  </button></li>`;
+}
+
+function rowList(heading, items, selected, tabId) {
+  return `<ul aria-labelledby="${heading}">${items.map(item => row(item, selected, tabId)).join('')}</ul>`;
+}
+
+function groupBy(items, keyFor) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = keyFor(item);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  return groups;
+}
+
+function profileGroups(id, title, entries, vmIdFor, render, empty = '') {
+  const profiles = groupBy(entries, entry => findMachine(vmIdFor(entry))?.profile ?? 'unknown');
+  const heading = `<h3 class="group" id="${id}">${title}</h3>`;
+  if (!profiles.size) return heading + `<p class="group">${empty}</p>`;
+  return heading + Array.from(profiles, ([profile, items], index) => {
+    const profileHeading = `${id}-profile-${index}`;
+    return `<div class="profile-group">
+      <h4 class="profile-title" id="${profileHeading}">Profile ${profile}</h4>
+      ${render(profileHeading, items)}
+    </div>`;
+  }).join('');
+}
+
+function vmHeading(id) {
+  const machine = findMachine(id);
+  return `${machine?.project ?? 'Unknown project'} · VM ${id}${machine?.ended ? ' · ended' : ''}`;
+}
+
+function networkGroup(id, title, entries, toRow, selected, tabId, empty = '') {
+  return profileGroups(id, title, entries, entry => entry.vm, (_, items) =>
+    Array.from(groupBy(items, entry => entry.vm), ([vm, events]) => {
+      const heading = `${id}-${vm}`;
+      return `<div class="vm-group">
+        <h5 class="vm-title" id="${heading}">${vmHeading(vm)}</h5>
+        ${rowList(heading, events.map(toRow), selected, tabId)}
+      </div>`;
+    }).join(''), empty);
+}
+
+function facts(pairs) {
+  return `<dl>${pairs.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl>`;
+}
+
+function vmOrigin(id) {
+  const machine = findMachine(id);
+  return machine ? `${machine.project} · Profile ${machine.profile}` : 'Unknown project and profile';
+}
+
+function vmLabel(id) {
+  const machine = findMachine(id);
+  return `${vmOrigin(id)} · ${id}${machine?.ended ? ' · ended' : ''}`;
+}
+
+function vmMounts(vm) {
+  return [
+    [`~/code/${vm.project}`, '/workspace', 'rw'],
+    [`~/.agentnook/profiles/${vm.profile}/${vm.agent.toLowerCase()}`, '/root', 'rw'],
+    [`/tmp/agentnook-telemetry-${vm.id}`, '/run/agentnook-telemetry', 'rw'],
+    ...(vm.extraMounts ?? [])
+  ];
+}
+
+function renderWatch() {
+  const rows = machines.map(vm => ({
+    id: vm.id, label: vmHeading(vm.id), context: `· ${vm.agent}`,
+    subtitle: `Network: ${vm.network} · ${vmMounts(vm).length} mounts`,
+    status: vm.activity, attention: vm.activity === 'Unknown'
+  }));
+  $('watch-list').innerHTML = profileGroups('machines-title', 'Instances', rows, item => item.id,
+    (heading, items) => rowList(heading, items, watchId, watchId));
+  const vm = machines.find(vm => vm.id === watchId);
+  const mounts = vmMounts(vm).map(([host, guest, mode]) => `<li>${host} → ${guest} <span class="muted">[${mode}]</span></li>`).join('');
+  $('watch-selection').innerHTML = `<h3>${vm.project} · ${vm.id}</h3>` + facts([
+    ['Agent', `${vm.agent} / ${vm.profile}`], ['VM / activity', `${vm.vm} / ${vm.activity}`],
+    ['Agent uptime', vm.runtime], ['Launch limits', vm.limits],
+    ['Network mode', vm.network], ['Mounts', `<ul class="mounts">${mounts}</ul>`]
+  ]) + (vm.activity === 'Unknown' ? '<p class="note">Telemetry is stale. The VM is still running.</p>' : '');
+}
+
+function historyRow(event) {
+  return {id: event.id, label: event.target, context: `· ${event.protocol} · ${event.time}`, status: event.verdict};
+}
+
+function requestRow(entry) {
+  return {id: entry.id, label: entry.host, context: `· ${entry.target}`, status: 'Pending', attention: true};
+}
+
+function historyDetail(event, showMode = false) {
+  const mode = findMachine(event.vm)?.network;
+  const fields = [['Destination', event.target], ['VM', vmLabel(event.vm)], ['Reason', event.reason]];
+  if (showMode) fields.push(['Network', mode === 'full' ? 'full · only denials are recorded' : mode ?? 'Unknown']);
+  return `<h3>${event.verdict} · ${event.protocol}</h3>` + facts(fields) +
+    (event.verdict === 'Allowed' ? '<p class="note">Allowed means permitted by policy, not that the connection succeeded.</p>' : '');
+}
+
+function archiveEvents() {
+  return $('live-only').checked ? history.filter(event => machines.some(vm => vm.id === event.vm)) : history;
+}
+
+function renderArchive() {
+  const events = archiveEvents();
+  const visible = events.slice(0, archiveLimit);
+  const previous = visible.find(event => event.id === archiveId);
+  const selected = previous ?? visible[0];
+  archiveId = selected?.id;
+  $('archive-summary').textContent = `${visible.length} of ${events.length} events · Newest first per VM`;
+  $('archive-list').innerHTML = networkGroup('archive-events-title', 'Recorded decisions',
+    visible, historyRow, archiveId, archiveId, 'No recorded events.');
+  $('older-events').hidden = visible.length >= events.length;
+  $('archive-selection').innerHTML = selected ? historyDetail(selected, true) : '<h3>No selection</h3>';
+}
+
+function renderNetwork() {
+  $('network-summary').innerHTML = `<span class="${pending.length ? 'attention' : ''}">${pending.length} pending</span> · ${history.length} events`;
+  const past = history.slice(0, 3);
+  const tabId = networkId ?? pending[0]?.id ?? past[0]?.id;
+  $('network-list').innerHTML = networkGroup('pending-title', 'Pending requests', pending,
+    requestRow, networkId, tabId, 'No pending requests.') +
+    networkGroup('history-title', 'Recent decisions', past, historyRow, networkId, tabId);
+  const request = pending.find(entry => entry.id === networkId);
+  const event = history.find(entry => entry.id === networkId);
+  let detail;
+  if (request) {
+    detail = '<h3>TCP approval</h3>' + facts([
+      ['Destination', request.target], ['VM', vmLabel(request.vm)], ['HTTP host', `${request.host} · unverified`]
+    ]) + `<div class="actions" aria-label="Simulated approval">
+      <button class="action" type="button" data-decision="once">Allow once</button>
+      <button class="action" type="button" data-decision="session">Allow for this VM run</button>
+      <button class="action" type="button" data-decision="deny">Deny</button>
+    </div><p class="note">Approval applies only to this VM run and exact IP and port. In the live TUI, unanswered requests are denied after 12 s.</p>`;
+  } else if (event) {
+    detail = historyDetail(event);
+  } else {
+    detail = `<h3>${feedback || 'No selection'}</h3><p class="muted">Select a request or event.</p>`;
+  }
+  $('network-selection').innerHTML = detail;
+}
+
+function bindList(list, choose) {
+  function select(button) {
+    const id = button.dataset.id;
+    choose(id);
+    list.querySelector('[tabindex="0"]').focus();
+  }
+  list.addEventListener('click', event => {
+    const button = event.target.closest('.row');
+    if (button) select(button);
+  });
+  list.addEventListener('keydown', event => {
+    const delta = {ArrowDown: 1, j: 1, ArrowUp: -1, k: -1}[event.key];
+    if (!delta || event.altKey || event.ctrlKey || event.metaKey) return;
+    const rows = Array.from(list.querySelectorAll('.row'));
+    const current = rows.indexOf(event.target);
+    if (current < 0) return;
+    event.preventDefault();
+    const next = rows[current + delta];
+    if (next) select(next);
+  });
+}
+
+function reset() {
+  watchId = machines[0].id;
+  // Preview history without preselecting or arming a connection request.
+  networkId = archiveId = sampleHistory[0].id;
+  pending = [...requests];
+  history = [...sampleHistory];
+  feedback = '';
+  archiveLimit = archivePageSize;
+  $('live-only').checked = false;
+  renderWatch();
+  renderNetwork();
+  renderArchive();
+}
+
+bindList($('watch-list'), id => { watchId = id; renderWatch(); });
+bindList($('network-list'), id => { networkId = id; feedback = ''; renderNetwork(); });
+bindList($('archive-list'), id => { archiveId = id; renderArchive(); });
+$('live-only').addEventListener('change', renderArchive);
+$('older-events').addEventListener('click', () => {
+  archiveLimit += archivePageSize;
+  renderArchive();
+  if ($('older-events').hidden) $('archive-list').querySelector('[tabindex="0"]')?.focus({preventScroll: true});
+});
+$('network-selection').addEventListener('click', event => {
+  const decision = decisions[event.target.closest('[data-decision]')?.dataset.decision];
+  const request = pending.find(entry => entry.id === networkId);
+  if (!decision || !request) return;
+  const [verdict, reason] = decision;
+  pending = pending.filter(entry => entry.id !== request.id);
+  history.unshift({...request, verdict, reason, time: '14:44:08'});
+  networkId = null; // Never retarget an approval action to the next request.
+  feedback = `${verdict} · Demo`;
+  renderNetwork();
+  renderArchive();
+  $('network-list').querySelector('[tabindex="0"]').focus();
+});
+$('reset').addEventListener('click', reset);
+reset();
+</script>
+</body>
+</html>

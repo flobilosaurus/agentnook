@@ -11,7 +11,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/flobilosaurus/agentnook/internal/config"
@@ -24,203 +23,135 @@ func fleetUpdate(m fleetModel, msg tea.Msg) (fleetModel, tea.Cmd) {
 	return next.(fleetModel), cmd
 }
 
-func fleetKey(m fleetModel, value string) (fleetModel, tea.Cmd) {
-	return fleetUpdate(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(value)})
-}
+func watchKey(value string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(value)} }
 
 func fleetSnapshot() fleet.Snapshot {
 	return fleet.Snapshot{Instances: []fleet.Instance{
-		{Name: "run-a", Project: "/repo", Agent: "pi", Profile: "work", State: "running", CPUs: 2, MemoryMiB: 2048, AgentVersion: "1.4.0", Image: "/images/dev.smolmachine", ImageName: "dev", BaseImage: "node:24-bookworm", CreatedAt: time.Unix(1731920000, 0), Mounts: []config.Mount{
-			{Host: "/repo", Guest: "/workspace"}, {Host: "/data/profiles/work/pi", Guest: "/root"}, {Host: "/docs", Guest: "/mnt/docs", ReadOnly: true},
-		}},
-		{Name: "run-b", Project: "/z-other project", Agent: "claude", Profile: "work", State: "unreachable", CPUs: 4, MemoryMiB: 4096, Mounts: []config.Mount{{Host: "/repo", Guest: "/workspace"}}},
+		{Name: "run-a", Project: "/repo", Agent: "pi", Profile: "private", State: "running", Network: "ask", CPUs: 2, MemoryMiB: 2048,
+			AgentVersion: "1.4.0", Image: "/images/dev.smolmachine", ImageName: "dev", BaseImage: "node:24-bookworm", Mounts: []config.Mount{
+				{Host: "/repo", Guest: "/workspace"}, {Host: "/data/profiles/private/pi", Guest: "/root"}, {Host: "/docs", Guest: "/mnt/docs", ReadOnly: true},
+			}},
+		{Name: "run-c", Project: "/elsewhere", Agent: "claude", Profile: "work", State: "unreachable", Network: "full", CPUs: 4, MemoryMiB: 4096},
+		{Name: "run-b", Project: "/repo", Agent: "pi", Profile: "private", State: "running"},
 	}}
 }
 
 func loadedFleet(t *testing.T) fleetModel {
 	t.Helper()
 	load := func(context.Context) (fleet.Snapshot, error) { return fleetSnapshot(), nil }
-	m := newFleetModel(context.Background(), "/repo", load)
-	m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: 120, Height: 50})
+	m := newFleetModel(context.Background(), "All projects · AGENTNOOK_HOME: /data", load)
+	m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: 100, Height: 40})
 	m, cmd := fleetUpdate(m, m.Init()())
 	if cmd == nil {
 		t.Fatal("refresh not scheduled")
 	}
-	chooseVM(t, &m, "run-a")
-	m.navigatorFocus = false // These tests exercise inspector selection.
 	return m
 }
 
-func TestFleetAllDetailsAndMountsVisibleWithoutTabs(t *testing.T) {
+func TestWatchListAndDetails(t *testing.T) {
 	m := loadedFleet(t)
 	view := ansi.Strip(m.View())
-	for _, value := range []string{"agentnook fleet", "VM STATUS", "Navigator", "Instances", "Version¹", "running", "Machine", "node:24-bookworm", "2 vCPU / 2 GiB", "1.4.0", "Storage", "unknown", "Activity", "Runtime", "Heartbeat", "awaiting heartbeat progress", "Mounts · 3", "/repo → /workspace [rw]", "/data/profiles/work/pi → /root [rw]", "/docs → /mnt/docs [ro]", "Record age, not uptime"} {
+	for _, value := range []string{"nook watch", "All projects", "3 VMs · 2 projects", "Profile private", "Profile work", "repo · VM run-a", "Network: ask · 3 mounts", "Launch limits  2 vCPU", "Network mode  ask", "/docs → /mnt/docs [ro]"} {
 		if !strings.Contains(view, value) {
 			t.Errorf("missing %q in\n%s", value, view)
 		}
 	}
-	if !strings.Contains(view, "Tab focus") {
-		t.Fatal("focus navigation help missing", view)
+	if strings.Contains(view, "Navigator") || strings.Contains(view, "Tab focus") || strings.Count(view, selectionMarker) != 1 {
+		t.Fatal(view)
 	}
-	m, _ = fleetKey(m, "j")
-	view = ansi.Strip(m.View())
-	if !strings.Contains(view, "4 vCPU / 4 GiB") || !strings.Contains(view, "Mounts · 1") || strings.Contains(view, "/mnt/docs") || !strings.Contains(view, "VM unreachable") {
-		t.Fatal("details did not follow selection", view)
+	for _, name := range []string{"run-b", "run-c"} {
+		m, _ = fleetUpdate(m, watchKey("j"))
+		if m.instance().Name != name {
+			t.Fatal("not navigating visible order", m.instance())
+		}
+	}
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "Network mode  full") || !strings.Contains(view, "unreachable") || strings.Contains(view, "/mnt/docs") {
+		t.Fatal(view)
+	}
+	m, _ = fleetUpdate(m, watchKey("k"))
+	if !strings.Contains(ansi.Strip(m.View()), "Network mode  unknown") {
+		t.Fatal("missing mode must not be guessed")
 	}
 }
 
-func TestFleetGlobalScopeAndProjectPaths(t *testing.T) {
+func TestWatchSelectionRefreshAndFallback(t *testing.T) {
 	m := loadedFleet(t)
-	m.scope = "All projects · AGENTNOOK_HOME: /data"
-	for _, width := range []int{160, 120, 80, 46} {
-		chooseVM(t, &m, "run-a")
-		m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: width, Height: 50})
-		view := ansi.Strip(m.View())
-		if !strings.Contains(view, "All projects") || !strings.Contains(view, "Project") || !strings.Contains(view, "/repo") {
-			t.Fatalf("missing global scope or project at width %d:\n%s", width, view)
-		}
-		if width == 160 && (!strings.Contains(view, "Navigator") || !strings.Contains(view, "Instances")) {
-			t.Fatal("wide view missing split panes", view)
-		}
-		m, _ = fleetKey(m, "j")
-		if view := ansi.Strip(m.View()); !strings.Contains(view, "/z-other project") {
-			t.Fatal("project did not follow selection", view)
-		}
-		for _, line := range strings.Split(m.View(), "\n") {
-			if lipgloss.Width(line) > width {
-				t.Fatalf("global view overflows width %d: %q", width, line)
-			}
-		}
+	m, _ = fleetUpdate(m, watchKey("j"))
+	data := fleetSnapshot()
+	data.Instances[0], data.Instances[2] = data.Instances[2], data.Instances[0]
+	m, _ = fleetUpdate(m, fleetResultMsg{snapshot: data, at: time.Now()})
+	if m.instance().Name != "run-b" {
+		t.Fatal("selection jumped on reorder")
 	}
-	m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: 120, Height: 50})
+	m, _ = fleetUpdate(m, fleetResultMsg{snapshot: fleet.Snapshot{Instances: data.Instances[1:]}, at: time.Now()})
+	if m.instance().Name != "run-a" {
+		t.Fatal("selection did not fall back within workspace")
+	}
 	m, _ = fleetUpdate(m, fleetResultMsg{at: time.Now()})
-	view := ansi.Strip(m.View())
-	if !strings.Contains(view, "in this scope") || strings.Contains(view, "this exact directory") || strings.Contains(view, "Start nook here") {
-		t.Fatal("global empty state implies local project", view)
+	m, _ = fleetUpdate(m, watchKey("j"))
+	if m.instance() != nil || !strings.Contains(m.View(), "No running agentnook instances") {
+		t.Fatal(m.View())
 	}
 }
 
-func TestFleetPiStatusUptimeHeartbeatAndStaleDiscovery(t *testing.T) {
+func TestWatchErrorsAndTelemetry(t *testing.T) {
 	m := loadedFleet(t)
 	now := time.Now()
 	data := fleetSnapshot()
 	data.Instances[0].Activity = telemetry.Sample{Fresh: true, HeartbeatAt: now, Report: telemetry.Report{State: "working", UptimeSeconds: 754}}
 	m, _ = fleetUpdate(m, fleetResultMsg{snapshot: data, at: now})
-	for _, width := range []int{120, 80, 46} {
-		m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: width, Height: 50})
-		view := ansi.Strip(m.View())
-		for _, value := range []string{"VM STATUS", "ACTIVITY", "UPTIME", "working", "12m34s"} {
-			if !strings.Contains(view, value) {
-				t.Fatalf("missing %q at width %d:\n%s", value, width, view)
-			}
-		}
-		if !strings.Contains(fleetHeartbeat(m.snapshot.Instances[0], now), "host-observed") {
-			t.Fatal("heartbeat details missing")
-		}
+	if view := m.View(); !strings.Contains(view, "working") || !strings.Contains(view, "12m34s") {
+		t.Fatal(view)
 	}
-	m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: 120, Height: 50})
-	m, _ = fleetUpdate(m, fleetResultMsg{err: errors.New("offline"), at: now.Add(6 * time.Second)})
-	view := ansi.Strip(m.View())
-	if !strings.Contains(view, "STALE") || strings.Contains(view, "working") || strings.Contains(view, "12m34s") || !strings.Contains(view, "running") {
-		t.Fatal("stale discovery implies fresh Pi or hides VM", view)
+	m, _ = fleetUpdate(m, fleetResultMsg{err: errors.New("discovery failed"), at: now.Add(time.Minute)})
+	if view := m.View(); !strings.Contains(view, "STALE") || !strings.Contains(view, "discovery failed") || !strings.Contains(view, "/mnt/docs") ||
+		strings.Contains(view, "working") || strings.Contains(view, "12m34s") || !strings.Contains(view, "running") {
+		t.Fatal(view)
 	}
-	if got := fleetUptime(fleet.Instance{Activity: telemetry.Sample{Fresh: true}}); got != "0s" {
-		t.Fatal("zero uptime treated as missing", got)
-	}
-}
-
-func TestFleetSelectionSurvivesRefreshAndRemoval(t *testing.T) {
-	m := loadedFleet(t)
-	m, _ = fleetKey(m, "j")
-	if m.cursor != 1 {
-		t.Fatal("selection did not move")
-	}
-	data := fleetSnapshot()
-	data.Instances[0], data.Instances[1] = data.Instances[1], data.Instances[0]
-	m, _ = fleetUpdate(m, fleetResultMsg{snapshot: data, at: time.Now()})
-	if m.cursor != 0 || m.snapshot.Instances[m.cursor].Name != "run-b" {
-		t.Fatal("selection jumped on reorder")
-	}
-	data.Instances = data.Instances[1:]
-	m, _ = fleetUpdate(m, fleetResultMsg{snapshot: data, at: time.Now()})
-	if m.cursor != 0 || m.snapshot.Instances[m.cursor].Name != "run-a" {
-		t.Fatal("removed selection not clamped")
-	}
-	m, _ = fleetUpdate(m, fleetResultMsg{at: time.Now()})
-	m, _ = fleetKey(m, "j")
-	if m.cursor != 0 || !strings.Contains(m.View(), "No running agentnook instances") {
-		t.Fatal("empty transition failed")
-	}
-}
-
-func TestFleetErrorsRetainSnapshotThenRecover(t *testing.T) {
-	m := loadedFleet(t)
-	m, _ = fleetUpdate(m, fleetResultMsg{err: errors.New("discovery failed")})
-	if view := m.View(); !strings.Contains(view, "STALE") || !strings.Contains(view, "discovery failed") || !strings.Contains(view, "/mnt/docs") {
-		t.Fatal("error hid previous snapshot", view)
-	}
-	m, _ = fleetUpdate(m, fleetResultMsg{snapshot: fleetSnapshot(), at: time.Now()})
+	m, _ = fleetUpdate(m, fleetResultMsg{snapshot: data, at: now})
 	if strings.Contains(m.View(), "STALE") || m.errText != "" {
-		t.Fatal("failed to recover")
+		t.Fatal(m.View())
 	}
 	m = newFleetModel(context.Background(), "/repo", nil)
 	m, _ = fleetUpdate(m, fleetResultMsg{err: errors.New("first poll failed")})
-	if !strings.Contains(m.View(), "Cannot discover") || strings.Contains(m.View(), "No running") {
-		t.Fatal("initial error presented as empty")
+	if !strings.Contains(m.View(), "Discovery unavailable") || strings.Contains(m.View(), "No running") {
+		t.Fatal(m.View())
 	}
 }
 
-func TestFleetResizeScrollAndSafeText(t *testing.T) {
+func assertTerminalBounds(t *testing.T, view string, width, height int) {
+	t.Helper()
+	lines := strings.Split(view, "\n")
+	if len(lines) > height {
+		t.Fatalf("height %d > %d:\n%s", len(lines), height, view)
+	}
+	for _, line := range lines {
+		if ansi.StringWidth(line) > width {
+			t.Fatalf("width %d > %d: %q", ansi.StringWidth(line), width, line)
+		}
+	}
+}
+
+func TestWatchResizeScrollAndSafeText(t *testing.T) {
 	m := loadedFleet(t)
 	data := fleetSnapshot()
 	data.Instances[0].Image = "untrusted\x1b]52;c;hello\a\nimage"
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		data.Instances[0].Mounts = append(data.Instances[0].Mounts, config.Mount{Host: fmt.Sprintf("/very long folder with spaces/資料/%d", i), Guest: fmt.Sprintf("/mnt/%d", i)})
 	}
 	m, _ = fleetUpdate(m, fleetResultMsg{snapshot: data, at: time.Now()})
-	for _, size := range [][2]int{{120, 45}, {80, 24}, {60, 20}, {46, 14}, {20, 10}} {
+	for _, size := range [][2]int{{120, 45}, {80, 24}, {46, 14}, {20, 10}, {1, 1}} {
 		m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-		view := m.View()
-		if strings.Contains(view, "\x1b]52") || strings.Contains(view, "\a") {
-			t.Fatal("terminal control leaked")
-		}
-		for _, line := range strings.Split(view, "\n") {
-			if lipgloss.Width(line) > size[0] {
-				t.Fatalf("line overflow for %v (%d): %q", size, lipgloss.Width(line), line)
-			}
-		}
-		if lines := strings.Count(view, "\n") + 1; lines > size[1] {
-			t.Fatalf("height overflow for %v: %d", size, lines)
-		}
+		assertTerminalBounds(t, m.View(), size[0], size[1])
 	}
 	m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: 80, Height: 24})
-	m, _ = fleetUpdate(m, tea.KeyMsg{Type: tea.KeyPgDown})
-	if m.details.YOffset == 0 {
-		t.Fatal("details did not scroll")
+	m, _ = fleetUpdate(m, tea.KeyMsg{Type: tea.KeyEnd})
+	if m.details.YOffset == 0 || !strings.Contains(m.View(), "untrusted?") || strings.Contains(m.View(), "\x1b]52") || strings.Contains(m.View(), "\a") {
+		t.Fatal(m.View())
 	}
-	m, _ = fleetKey(m, "j")
+	m, _ = fleetUpdate(m, watchKey("j"))
 	if m.details.YOffset != 0 {
 		t.Fatal("selection did not reset detail scroll")
-	}
-}
-
-func TestFleetQuitAndPolling(t *testing.T) {
-	m := loadedFleet(t)
-	for _, key := range []tea.KeyMsg{{Type: tea.KeyRunes, Runes: []rune("q")}, {Type: tea.KeyEsc}, {Type: tea.KeyCtrlC}} {
-		_, cmd := fleetUpdate(m, key)
-		if cmd == nil {
-			t.Fatal("quit missing")
-		}
-		if _, ok := cmd().(tea.QuitMsg); !ok {
-			t.Fatal("not a watch-only quit")
-		}
-	}
-	_, cmd := fleetUpdate(m, fleetRefreshMsg{})
-	if cmd == nil {
-		t.Fatal("no discovery command")
-	}
-	if result := cmd().(fleetResultMsg); result.err != nil || len(result.snapshot.Instances) != 2 {
-		t.Fatal("discovery command failed", result)
 	}
 }
 

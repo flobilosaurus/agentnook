@@ -162,6 +162,10 @@ func TestSourceAllWorkspacesHomeAndCatalogMetadata(t *testing.T) {
 		machines = append(machines, machine{Name: name, State: "running", CPUs: 2, MemoryMiB: 2048, MountCount: 3, CreatedAt: 1731920000, Image: config.BaseImage, Labels: map[string]string{"agentnook.image": filepath.Join(f.root, "dev.smolmachine"), "agentnook.ephemeral": "true"}})
 		project, home := f.project, f.source.Paths.Root
 		switch name {
+		case "run-1":
+			machines[len(machines)-1].Labels["agentnook.network"] = "ask"
+		case "run-2":
+			machines[len(machines)-1].Labels["agentnook.network"] = "invalid"
 		case "child":
 			project += "/child"
 		case "parent":
@@ -192,7 +196,7 @@ func TestSourceAllWorkspacesHomeAndCatalogMetadata(t *testing.T) {
 		t.Fatalf("%+v %v", got, err)
 	}
 	item := got.Instances[2] // child, parent, run-1, run-2; other data homes excluded.
-	if item.Name != "run-1" || !item.Ephemeral || item.Image != options.Image || item.Profile != "work" || item.ImageName != "dev" || item.AgentVersion != "1.4.0" || item.BaseImage != "node:24-bookworm" || item.CPUs != 2 || item.MemoryMiB != 2048 || item.StorageGiB != nil || len(item.Mounts) != 3 || !item.Mounts[2].ReadOnly {
+	if item.Name != "run-1" || item.Network != "ask" || got.Instances[3].Network != "" || !item.Ephemeral || item.Image != options.Image || item.Profile != "work" || item.ImageName != "dev" || item.AgentVersion != "1.4.0" || item.BaseImage != "node:24-bookworm" || item.CPUs != 2 || item.MemoryMiB != 2048 || item.StorageGiB != nil || len(item.Mounts) != 3 || !item.Mounts[2].ReadOnly {
 		t.Fatalf("wrong snapshot: %+v", item)
 	}
 }

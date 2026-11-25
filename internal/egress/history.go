@@ -215,32 +215,55 @@ func (w *historyWriter) flush() error {
 // ReadHistory needs no runtime or running VM, and never creates storage. All
 // machines are discoverable; event reads are bounded and byte-cursor paginated.
 func ReadHistory(root string, query HistoryQuery) (HistoryView, error) {
+	dir, machines, err := historyCatalog(root)
+	view := HistoryView{Machines: machines}
+	if err != nil {
+		return view, err
+	}
+	if query.Machine == "" && len(machines) > 0 {
+		query.Machine = machines[0].Machine
+	}
+	if query.Machine == "" {
+		return view, nil
+	}
+	for _, meta := range machines {
+		if meta.Machine == query.Machine {
+			f, err := secureHistoryFile(filepath.Join(dir, query.Machine, "events.jsonl"))
+			if err != nil {
+				return view, err
+			}
+			defer f.Close()
+			view.Page, err = readHistoryPage(f, query)
+			return view, err
+		}
+	}
+	return view, errors.New("unknown archived machine")
+}
+
+func historyCatalog(root string) (string, []MachineHistory, error) {
 	dir, err := historyDirectory(root, false)
 	if errors.Is(err, os.ErrNotExist) {
-		if query.Machine != "" {
-			return HistoryView{}, errors.New("unknown archived machine")
-		}
-		return HistoryView{}, nil
+		return "", nil, nil
 	}
 	if err != nil {
-		return HistoryView{}, err
+		return "", nil, err
 	}
 	files, err := os.ReadDir(dir)
 	if err != nil {
-		return HistoryView{}, err
+		return "", nil, err
 	}
-	view := HistoryView{}
+	var machines []MachineHistory
 	for _, entry := range files {
 		if !historyName.MatchString(entry.Name()) {
 			continue
 		}
 		machineDir := filepath.Join(dir, entry.Name())
 		if err := checkHistoryDir(machineDir); err != nil {
-			return view, err
+			return dir, machines, err
 		}
 		f, err := secureHistoryFile(filepath.Join(machineDir, "machine.json"))
 		if err != nil {
-			return view, err
+			return dir, machines, err
 		}
 		var meta MachineHistory
 		err = json.NewDecoder(io.LimitReader(f, 16*1024)).Decode(&meta)
@@ -249,48 +272,36 @@ func ReadHistory(root string, query HistoryQuery) (HistoryView, error) {
 			meta.Mode != "ask" && meta.Mode != "full" ||
 			meta.Mode == "ask" && meta.Coverage != "engine-decisions" ||
 			meta.Mode == "full" && meta.Coverage != "denials-only" {
-			return view, errors.New("invalid machine history metadata")
+			return dir, machines, errors.New("invalid machine history metadata")
 		}
-		view.Machines = append(view.Machines, meta)
+		machines = append(machines, meta)
 	}
-	sort.Slice(view.Machines, func(i, j int) bool {
-		a, b := view.Machines[i], view.Machines[j]
+	sort.Slice(machines, func(i, j int) bool {
+		a, b := machines[i], machines[j]
 		if a.Started.Equal(b.Started) {
 			return a.Machine < b.Machine
 		}
 		return a.Started.After(b.Started)
 	})
-	if query.Machine == "" && len(view.Machines) > 0 {
-		query.Machine = view.Machines[0].Machine
-	}
-	if query.Machine == "" {
-		return view, nil
-	}
-	found := false
-	for _, meta := range view.Machines {
-		found = found || meta.Machine == query.Machine
-	}
-	if !found {
-		return view, errors.New("unknown archived machine")
-	}
-	f, err := secureHistoryFile(filepath.Join(dir, query.Machine, "events.jsonl"))
-	if err != nil {
-		return view, err
-	}
-	defer f.Close()
-	view.Page, err = readHistoryPage(f, query)
-	return view, err
+	return dir, machines, nil
 }
 
 func readHistoryPage(f *os.File, q HistoryQuery) (HistoryPage, error) {
+	page, _, err := readHistoryWindow(f, q)
+	return page, err
+}
+
+// The second return value is the end of the newest complete record, which
+// lets a multi-machine cursor freeze each append-only log at a record boundary.
+func readHistoryWindow(f *os.File, q HistoryQuery) (HistoryPage, int64, error) {
 	page := HistoryPage{Machine: q.Machine, Before: q.Before, Events: []HistoryEvent{}}
 	info, err := f.Stat()
 	if err != nil {
-		return page, err
+		return page, 0, err
 	}
 	end := info.Size()
 	if q.Before < 0 || q.Before > end {
-		return page, errors.New("invalid history cursor")
+		return page, 0, errors.New("invalid history cursor")
 	}
 	if q.Before > 0 {
 		end = q.Before
@@ -305,7 +316,7 @@ func readHistoryPage(f *os.File, q HistoryQuery) (HistoryPage, error) {
 	start := max(int64(0), end-int64((limit+2)*maxHistoryLine))
 	p := make([]byte, end-start)
 	if _, err := f.ReadAt(p, start); err != nil && !errors.Is(err, io.EOF) {
-		return page, err
+		return page, 0, err
 	}
 	if start > 0 {
 		if i := bytes.IndexByte(p, '\n'); i >= 0 {
@@ -316,7 +327,7 @@ func readHistoryPage(f *os.File, q HistoryQuery) (HistoryPage, error) {
 	// A partially written final line must wait for the next refresh.
 	last := bytes.LastIndexByte(p, '\n')
 	if last < 0 {
-		return page, nil
+		return page, 0, nil
 	}
 	p = p[:last+1]
 	position := start + int64(len(p))
@@ -325,13 +336,13 @@ func readHistoryPage(f *os.File, q HistoryQuery) (HistoryPage, error) {
 		position -= int64(len(lines[i]) + 1)
 		var e HistoryEvent
 		if len(lines[i]) >= maxHistoryLine || json.Unmarshal(lines[i], &e) != nil || e.Decision != "allowed" && e.Decision != "denied" {
-			return page, errors.New("invalid archived network event")
+			return page, 0, errors.New("invalid archived network event")
 		}
 		page.Events = append(page.Events, e)
 		page.NextBefore = position
 	}
 	page.HasOlder = page.NextBefore > 0
-	return page, nil
+	return page, start + int64(len(p)), nil
 }
 
 func validMetadata(s string, max int) bool {

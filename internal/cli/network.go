@@ -16,11 +16,11 @@ const networkUsage = `Usage: nook network [--machine NAME]
 
 Show persistent per-VM outbound network history, including ended machines, in this AGENTNOOK_HOME.
 The terminal view needs at least 48 columns and 22 rows; JSON has no size requirement.
-History uses a Profile → VM → Event tree and shows events under the selected VM.
-Approvals open by default. Tab switches between approvals and history.
-History shows running VMs only by default; f toggles all VMs.
---machine opens the named VM in the unfiltered terminal view.
-History keys: up/down or j/k select VM; PgUp older; PgDn newer; Home latest.
+The overview shows pending requests and recent decisions together. Both are
+    grouped by profile and VM. h (or Tab) opens full, read-only history.
+History includes ended VMs by default; f toggles running VMs only.
+--machine opens read-only history for the named VM.
+History keys: up/down or j/k select events; PgUp older; PgDn newer; Home latest.
 Every recorded event shows ALLOWED or DENIED and its policy reason.
 ALLOWED means policy permission, NOT a successful connection or HTTP response.
 ask records engine decisions (TCP/DNS/UDP/ICMP when reported).
@@ -32,8 +32,9 @@ Use page.machine and page.next_before with --machine and --before for older even
 Approve pending TCP connections for nook --network ask sessions in this AGENTNOOK_HOME.
 Run in a separate terminal; the agent keeps its own terminal input.
 Requires smolvm >= 1.36.1 for protected VM launches, not for this view.
-Approvals are grouped in an always-open Profile → VM → Request tree.
-Up/down or j/k select requests only; selection never jumps on expiry.
+Profile and VM headings are always visible within the list, not selectable.
+Up/down or j/k selects requests or events. Expiry never retargets a selection.
+Approval keys work only on an explicitly selected pending request.
 Keys: a allow once, s allow exact destination IP/port for this VM launch, d deny.
       q, Esc or Ctrl+C close only the view, not the VMs or brokers.
 Unanswered requests are denied after 12 seconds (smolvm's limit is 15 seconds).
@@ -97,13 +98,12 @@ func (a App) networkCommand(args []string) int {
 		}
 		return 0
 	}
-	view := a.Network
-	if view == nil {
-		view = func(root string, load tui.NetworkLoader, decide tui.NetworkDecider) error {
-			return tui.WatchNetwork(root, initial, load, decide, a.In, a.Out)
-		}
+	if a.Network != nil {
+		err = a.Network(p.Root, load, egress.Decide)
+	} else {
+		err = tui.WatchNetwork(p.Root, initial, egress.Decide, a.In, a.Out)
 	}
-	if err := view(p.Root, load, egress.Decide); err != nil {
+	if err != nil {
 		return a.fail(1, fmt.Errorf("network: %w", err))
 	}
 	return 0

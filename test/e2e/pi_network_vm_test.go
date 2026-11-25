@@ -20,7 +20,7 @@ import (
 func (f realVMFixture) testPiNetworkApproval(t *testing.T) {
 	ctx := context.Background()
 	network := startTestTerminal(t, f.command(ctx, "network"))
-	network.expect(t, 8*time.Second, `\[Approvals\]`)
+	network.expect(t, 8*time.Second, `Pending requests`)
 	network.expect(t, 5*time.Second, `No pending connections`)
 
 	pi := startTestTerminal(t, f.command(ctx, "--agent", "pi", "--profile", "smoke", "--network", "ask", "--", "--offline", "--no-session"))
@@ -35,10 +35,11 @@ func (f realVMFixture) testPiNetworkApproval(t *testing.T) {
 	// connection, not multiple. The actual status isn't in the echoed input.
 	pi.send(t, `!curl -q -4 -fsS --noproxy '*' --max-time 20 -o /dev/null -w 'GitHub HTTP %{http_code}\n' http://github.com/`+"\r")
 	const response = `GitHub HTTP [23][0-9]{2}`
-	network.expect(t, 8*time.Second, `└─ Profile smoke · 1 pending`)
-	network.expect(t, 3*time.Second, `└─ VM pi · [a-f0-9]{32} · 1 pending`)
-	row := network.expect(t, 3*time.Second, `└─ +github\.com \(HTTP Host\)\* · [0-9.]+:80`)
-	target := strings.Fields(row)[5]
+	network.expect(t, 8*time.Second, `Profile smoke`)
+	network.expect(t, 3*time.Second, `· VM [a-z0-9]{10} · pi`)
+	row := network.expect(t, 3*time.Second, `github\.com \(HTTP Host\)\* · [0-9.]+:80`)
+	fields := strings.Fields(row)
+	target := fields[len(fields)-1]
 	network.send(t, "j")
 	network.expect(t, 3*time.Second, `TCP destination: `+regexp.QuoteMeta(target))
 	network.expect(t, 3*time.Second, `HTTP Host \(unverified\): github\.com`)

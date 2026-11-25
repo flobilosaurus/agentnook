@@ -12,9 +12,9 @@ func TestWatchHelpAndNonterminalNeverLaunchOrWrite(t *testing.T) {
 	if code != 0 || stderr != "" || !strings.Contains(out, "Usage: nook watch\n") || strings.Contains(out, "--all") || !strings.Contains(out, "current AGENTNOOK_HOME") || !strings.Contains(out, "agent activity, runtime uptime and heartbeat") || !strings.Contains(out, "Missing or stale agent telemetry remains unknown") {
 		t.Fatalf("help: %d %q %q", code, out, stderr)
 	}
-	for _, value := range []string{"Always-open navigator", "Only VM rows are selectable", "skipping all group headings", "Tab/Shift+Tab", "No collapsing", "read-only"} {
+	for _, value := range []string{"One list grouped by profile", "Only VM rows are selectable", "network mode and mount count", "Details for the selected VM appear below", "skipping profile headings", "read-only"} {
 		if !strings.Contains(out, value) {
-			t.Fatalf("missing navigator help %q: %s", value, out)
+			t.Fatalf("missing watch help %q: %s", value, out)
 		}
 	}
 	_, stderr, code = s.run(t, s.project, "", 0, "watch")

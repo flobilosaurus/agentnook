@@ -4,15 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
-	"strconv"
+	"sort"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/flobilosaurus/agentnook/internal/fleet"
@@ -36,32 +33,20 @@ type fleetResultMsg struct {
 }
 
 type fleetModel struct {
-	ctx                  context.Context
-	scope                string
-	load                 FleetLoader
-	snapshot             fleet.Snapshot
-	nodes                []fleetNode
-	navCursor, navOffset int
-	filtered             []int
-	cursor               int // Index in snapshot, not in the filtered list.
-	navigatorFocus       bool
-	width, height        int
-	details              viewport.Model
-	lastSuccess          time.Time
-	errText, notice      string
-	loaded               bool
-}
-
-type fleetLayout struct {
-	split                              bool
-	bodyHeight, navWidth, navHeight    int
-	inspectorWidth, rows, detailHeight int
+	ctx           context.Context
+	scope         string
+	load          FleetLoader
+	snapshot      fleet.Snapshot
+	cursor        int
+	width, height int
+	details       viewport.Model
+	lastSuccess   time.Time
+	errText       string
+	loaded        bool
 }
 
 func newFleetModel(ctx context.Context, scope string, load FleetLoader) fleetModel {
-	m := fleetModel{ctx: ctx, scope: scope, load: load, width: 100, height: 36, navigatorFocus: true, details: viewport.New(60, 20)}
-	m.rebuildDetails()
-	return m
+	return fleetModel{ctx: ctx, scope: scope, load: load, cursor: -1, width: 88, height: 32, details: viewport.New(88, 12)}
 }
 
 func (m fleetModel) fetch() tea.Msg {
@@ -71,390 +56,235 @@ func (m fleetModel) fetch() tea.Msg {
 
 func (m fleetModel) Init() tea.Cmd { return m.fetch }
 
-func (m fleetModel) selection() (string, string) {
-	if item := m.currentInstance(); item != nil {
-		return item.Name, item.Project
+func (m fleetModel) instance() *fleet.Instance {
+	if m.cursor < 0 || m.cursor >= len(m.snapshot.Instances) {
+		return nil
 	}
-	return "", ""
+	return &m.snapshot.Instances[m.cursor]
+}
+
+func watchProject(vm fleet.Instance) string {
+	if vm.Workspace.Repository != "" {
+		return vm.Workspace.Repository
+	}
+	return vm.Project
+}
+
+func (m *fleetModel) replaceSnapshot(snapshot fleet.Snapshot) {
+	previous := m.instance()
+	m.snapshot = snapshot
+	m.snapshot.Instances = append([]fleet.Instance(nil), snapshot.Instances...)
+	sort.SliceStable(m.snapshot.Instances, func(i, j int) bool {
+		return m.snapshot.Instances[i].Profile < m.snapshot.Instances[j].Profile
+	})
+	m.cursor = -1
+	best := 5
+	for i, vm := range m.snapshot.Instances {
+		rank := 4
+		if previous != nil {
+			switch {
+			case vm.Name == previous.Name:
+				rank = 0
+			case vm.Profile == previous.Profile && vm.Project == previous.Project:
+				rank = 1
+			case vm.Profile == previous.Profile && watchProject(vm) == watchProject(*previous):
+				rank = 2
+			case vm.Profile == previous.Profile:
+				rank = 3
+			}
+		}
+		if rank < best {
+			m.cursor, best = i, rank
+		}
+	}
+	if best != 0 {
+		m.details.GotoTop()
+	}
 }
 
 func (m fleetModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width, m.height = max(1, msg.Width-2), max(1, msg.Height)
-		m.rebuildDetails()
+		m.width, m.height = max(1, msg.Width), max(1, msg.Height)
 	case fleetRefreshMsg:
 		return m, m.fetch
 	case fleetResultMsg:
-		previous, workspace := m.selection()
 		if msg.err != nil {
 			m.errText = msg.err.Error()
-			for i := range m.snapshot.Instances {
-				m.snapshot.Instances[i].Activity.Fresh = false
-			}
 		} else {
-			m.snapshot, m.lastSuccess, m.errText, m.loaded = msg.snapshot, msg.at, "", true
-			m.rebuildNavigator(previous, workspace)
-			if current, _ := m.selection(); current != previous {
-				m.details.GotoTop()
-				if previous != "" {
-					m.notice = "Selected instance ended or left this scope; selection moved."
-				}
-			}
+			m.replaceSnapshot(msg.snapshot)
+			m.errText, m.lastSuccess, m.loaded = "", msg.at, true
 		}
-		m.rebuildDetails()
-		return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return fleetRefreshMsg{} })
+		cmd = tea.Tick(time.Second, func(time.Time) tea.Msg { return fleetRefreshMsg{} })
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
-		case "tab", "shift+tab":
-			m.navigatorFocus = !m.navigatorFocus
-		case "left", "h":
-			m.navigatorFocus = true
-		case "right", "l":
-			m.navigatorFocus = false
 		case "up", "k", "down", "j":
 			delta := 1
 			if msg.String() == "up" || msg.String() == "k" {
 				delta = -1
 			}
-			previous, _ := m.selection()
-			m.moveVM(delta)
-			if current, _ := m.selection(); current != previous {
-				m.details.GotoTop()
+			if len(m.snapshot.Instances) != 0 {
+				cursor := min(len(m.snapshot.Instances)-1, max(0, m.cursor+delta))
+				if cursor != m.cursor {
+					m.cursor = cursor
+					m.details.GotoTop()
+				}
 			}
-			m.notice = ""
-		case "pgdown", "ctrl+d":
-			m.details.HalfViewDown()
 		case "pgup", "ctrl+u":
 			m.details.HalfViewUp()
+		case "pgdown", "ctrl+d":
+			m.details.HalfViewDown()
 		case "home":
 			m.details.GotoTop()
 		case "end":
 			m.details.GotoBottom()
 		}
-		m.rebuildDetails()
 	case tea.MouseMsg:
-		var cmd tea.Cmd
 		m.details, cmd = m.details.Update(msg)
-		return m, cmd
 	}
-	return m, nil
+	m.refreshDetails()
+	return m, cmd
+}
+
+func (m fleetModel) activity(vm *fleet.Instance) (state, uptime string) {
+	if m.errText != "" || !vm.Activity.Fresh {
+		return "unknown", "unknown"
+	}
+	return vm.Activity.State(), (time.Duration(vm.Activity.Report.UptimeSeconds) * time.Second).String()
 }
 
 func (m fleetModel) heading() []string {
-	lines := []string{accent.Render("agentnook fleet"), muted.Render(fleetText(m.scope))}
-	summary := "Discovering instances…"
-	if m.loaded {
-		indices := make([]int, len(m.snapshot.Instances))
-		for i := range indices {
-			indices[i] = i
-		}
-		summary = fleetCounts(m.snapshot.Instances, indices) + " · updated " + m.lastSuccess.Local().Format("15:04:05")
-	}
-	if m.errText != "" {
-		summary = "Discovery unavailable · retrying"
-		if m.loaded {
-			summary = "STALE · last success " + m.lastSuccess.Local().Format("15:04:05")
-		}
-	}
-	lines = append(lines, muted.Render(summary))
-	if m.errText != "" {
-		lines = append(lines, errorStyle.Render(fleetText(m.errText)))
-	}
-	if m.snapshot.Warning != "" {
-		lines = append(lines, muted.Render(fleetText(m.snapshot.Warning)))
-	}
-	if m.notice != "" {
-		lines = append(lines, muted.Render(m.notice))
-	}
-	return lines
-}
-
-func (m fleetModel) layout() fleetLayout {
-	l := fleetLayout{bodyHeight: max(1, m.height-len(m.heading())-4)}
-	l.split = m.width >= 100 && m.height >= 20
-	l.inspectorWidth = m.width
-	if l.split {
-		l.navWidth = min(42, m.width/3)
-		l.navHeight = l.bodyHeight - 1
-		l.inspectorWidth = m.width - l.navWidth - 3
-	} else {
-		l.navWidth = m.width
-		l.navHeight = max(1, min(len(m.nodes), l.bodyHeight/4))
-	}
-	l.rows = min(len(m.filtered), max(1, min(6, (l.bodyHeight-5)/3)))
-	l.detailHeight = l.bodyHeight - 3 - l.rows
-	if !l.split {
-		l.detailHeight -= 1 + l.navHeight
-	}
-	l.detailHeight = max(1, l.detailHeight)
-	return l
-}
-
-func (m fleetModel) navigator(l fleetLayout) []string {
-	title := "Navigator"
-	if m.navigatorFocus {
-		title += " · FOCUS"
-	}
-	lines := []string{accent.Render(title)}
-	start := max(0, min(m.navOffset, max(0, len(m.nodes)-l.navHeight)))
-	for i := start; i < min(len(m.nodes), start+l.navHeight); i++ {
-		n := m.nodes[i]
-		prefix := strings.Repeat("  ", n.depth)
-		if n.depth > 0 {
-			prefix += "└─ "
-		}
-		label := prefix + n.label
-		if n.kind == "VM" {
-			item := m.snapshot.Instances[n.indices[0]]
-			label += " · " + item.Agent
-		} else {
-			count := fleetCounts(m.snapshot.Instances, n.indices)
-			// Keep compact counts readable without secondary path rows.
-			room := l.navWidth - lipgloss.Width(count) - 2
-			if room >= lipgloss.Width(prefix)+5 {
-				label = ansi.Truncate(fleetText(label), room, "…")
-				label += strings.Repeat(" ", max(1, l.navWidth-lipgloss.Width(label)-lipgloss.Width(count))) + count
-			} else {
-				label += " · " + strconv.Itoa(len(n.indices)) + " VM"
+	lines := []string{monitorTitle.Render("nook watch"), monitorMuted.Render(monitorText(m.scope))}
+	switch {
+	case m.errText != "" && m.loaded:
+		lines = append(lines, monitorWarning.Render("STALE · last update "+m.lastSuccess.Local().Format("15:04:05")+" · "+monitorText(m.errText)))
+	case m.errText != "":
+		lines = append(lines, monitorWarning.Render("Discovery unavailable · "+monitorText(m.errText)))
+	case m.loaded:
+		projects := make(map[string]struct{})
+		unknown := 0
+		for i := range m.snapshot.Instances {
+			vm := &m.snapshot.Instances[i]
+			projects[watchProject(*vm)] = struct{}{}
+			if state, _ := m.activity(vm); state == "unknown" {
+				unknown++
 			}
 		}
-		if n.kind == "VM" && i == m.navCursor {
-			label = selected.Render(label)
-		}
-		lines = append(lines, label)
-	}
-	return lines
-}
-
-func (m fleetModel) table(width, rows int) []string {
-	if len(m.filtered) == 0 {
-		return nil
-	}
-	widths := []int{width - 34, 12, 11, 11}
-	headers := []string{"INSTANCE", "VM STATUS", "ACTIVITY", "UPTIME"}
-	if width >= 80 {
-		widths[0] -= 12
-		widths = append(widths[:1], append([]int{12}, widths[1:]...)...)
-		headers = []string{"INSTANCE", "AGENT", "VM STATUS", "ACTIVITY", "UPTIME"}
-	}
-	row := func(values []string) string {
-		var result strings.Builder
-		for i, value := range values {
-			value = ansi.Truncate(fleetText(value), max(1, widths[i]-1), "…")
-			result.WriteString(value)
-			result.WriteString(strings.Repeat(" ", max(0, widths[i]-lipgloss.Width(value))))
-		}
-		return result.String()
-	}
-	lines := []string{muted.Render(row(headers))}
-	position := 0
-	for i, index := range m.filtered {
-		if index == m.cursor {
-			position = i
-		}
-	}
-	start := max(0, position-rows+1)
-	for _, index := range m.filtered[start:min(len(m.filtered), start+rows)] {
-		item := m.snapshot.Instances[index]
-		marker := "  "
-		if index == m.cursor {
-			marker = "▸ "
-		}
-		values := []string{marker + item.Name, item.State, item.Activity.State(), fleetUptime(item)}
-		if width >= 80 {
-			values = []string{marker + item.Name, item.Agent, item.State, item.Activity.State(), fleetUptime(item)}
-		}
-		line := row(values)
-		if index == m.cursor {
-			line = selected.Render(line)
+		line := fmt.Sprintf("%d VMs · %d projects", len(m.snapshot.Instances), len(projects))
+		if unknown > 0 {
+			line += " · " + monitorWarning.Render(fmt.Sprintf("%d with stale or missing telemetry", unknown))
 		}
 		lines = append(lines, line)
+	default:
+		lines = append(lines, "Discovering VMs…")
+	}
+	if m.snapshot.Warning != "" {
+		lines = append(lines, monitorMuted.Render(monitorText(m.snapshot.Warning)))
 	}
 	return lines
 }
 
-func (m *fleetModel) rebuildDetails() {
-	l := m.layout()
-	m.details.Width, m.details.Height = l.inspectorWidth, l.detailHeight
-	if m.navCursor < m.navOffset {
-		m.navOffset = m.navCursor
-	} else if m.navCursor >= m.navOffset+l.navHeight {
-		m.navOffset = m.navCursor - l.navHeight + 1
+func (m fleetModel) list(head int) []string {
+	rows := make([]monitorRow, 0, len(m.snapshot.Instances))
+	for i := range m.snapshot.Instances {
+		vm := &m.snapshot.Instances[i]
+		state, _ := m.activity(vm)
+		status := state
+		if vm.State != "running" {
+			status = monitorKnown(vm.State)
+		}
+		labelWidth := m.width - 6 - min(ansi.StringWidth(status), m.width/3)
+		rows = append(rows, monitorRow{profile: vm.Profile, label: monitorMachine(watchProject(*vm), vm.Name, vm.Agent, labelWidth),
+			secondary: fmt.Sprintf("Network: %s · %d mounts", monitorKnown(vm.Network), len(vm.Mounts)),
+			status:    status, warning: status != state || state == "unknown" || state == "blocked"})
 	}
-	m.navOffset = max(0, min(m.navOffset, max(0, len(m.nodes)-l.navHeight)))
-	item := m.currentInstance()
-	if item == nil {
+	// The details share the screen with the list but can scroll independently.
+	return monitorList(rows, m.cursor, m.width, max(3, (m.height-head-3)/2))
+}
+
+func (m *fleetModel) refreshDetails() {
+	vm := m.instance()
+	m.details.Width = m.width
+	list := m.list(len(m.heading()))
+	m.details.Height = max(1, m.height-len(m.heading())-len(list)-3)
+	if vm == nil {
 		m.details.SetContent("")
 		return
 	}
+	state, uptime := m.activity(vm)
 	var lines []string
-	add := func(text string) { lines = append(lines, ansi.Hardwrap(text, l.inspectorWidth, true)) }
-	image := item.Image
-	if item.ImageName != "" {
-		image = item.ImageName + " · " + item.Image
+	add := func(label, value string) {
+		lines = append(lines, ansi.Hardwrap(monitorMuted.Render(label)+"  "+value, m.width, true))
 	}
-	pairs := [][2]string{
-		{"Instance", item.Name}, {"Profile", item.Profile}, {"Project", unknown(fleetProject(*item))}, {"Workspace", unknown(item.Project)},
-		{"Agent", unknown(item.Agent)}, {"Image", unknown(image)}, {"Linux base", unknown(item.BaseImage)},
-		{"CPU / RAM", fmt.Sprintf("%d vCPU / %s (limits)", item.CPUs, fleetMemory(item.MemoryMiB))},
-		{"Version¹", unknown(item.AgentVersion) + " (image catalog; not guest-verified)"},
-		{"Storage", fleetOptional(item.StorageGiB, " GiB")}, {"PID", fleetOptional(item.PID, "")},
-		{"Created²", fleetCreated(item.CreatedAt)}, {"VM status", item.State}, {"Activity", item.Activity.State()},
-		{"Runtime", fleetUptime(*item) + " (agent runtime, not VM or session)"}, {"Heartbeat", fleetHeartbeat(*item, m.lastSuccess)},
-	}
-	if item.Workspace.Checkout != "" {
-		kind := "Main checkout"
-		if item.Workspace.Checkout != item.Workspace.Repository {
-			kind = "Worktree"
-		}
-		pairs = append(pairs, [2]string{kind, item.Workspace.Checkout}, [2]string{"Branch", unknown(item.Workspace.Branch)})
-	}
-	for _, pair := range pairs {
-		add(fmt.Sprintf("%-12s%s", pair[0], fleetText(pair[1])))
-	}
-	if !item.Activity.Fresh {
-		add(muted.Render("Agent telemetry missing, awaiting progress or stale; activity and uptime unknown."))
-	}
-	if item.State == "unreachable" {
-		add(errorStyle.Render("VM unreachable according to smolvm; Agent telemetry is evaluated independently."))
-	}
-	lines = append(lines, "", accent.Render(fmt.Sprintf("Mounts · %d (recorded at launch)", len(item.Mounts))))
-	for _, mount := range item.Mounts {
+	add("Agent", monitorKnown(vm.Agent)+" / "+monitorKnown(vm.Profile))
+	add("VM / activity", monitorKnown(vm.State)+" / "+state)
+	add("Agent uptime", uptime)
+	add("Launch limits", fmt.Sprintf("%d vCPU · %d MiB RAM", vm.CPUs, vm.MemoryMiB))
+	add("Network mode", monitorKnown(vm.Network))
+	add("Mounts", fmt.Sprintf("%d", len(vm.Mounts)))
+	for _, mount := range vm.Mounts {
 		mode := "rw"
 		if mount.ReadOnly {
 			mode = "ro"
 		}
-		add(fleetText(mount.Host) + " → " + fleetText(mount.Guest) + " [" + mode + "]")
+		add("", fmt.Sprintf("%s → %s [%s]", monitorText(mount.Host), monitorText(mount.Guest), mode))
+	}
+	if state == "unknown" {
+		lines = append(lines, ansi.Hardwrap("No fresh agent telemetry. VM state is reported separately.", m.width, true))
+	}
+	add("VM ID", monitorKnown(vm.Name))
+	add("Project", monitorKnown(watchProject(*vm)))
+	if vm.Project != watchProject(*vm) {
+		add("Workspace", monitorKnown(vm.Project))
+	}
+	if vm.Workspace.Branch != "" {
+		add("Branch", monitorText(vm.Workspace.Branch))
+	}
+	image := monitorKnown(vm.Image)
+	if vm.ImageName != "" {
+		image = monitorText(vm.ImageName) + " · " + image
+	}
+	add("Image", image)
+	add("Linux base", monitorKnown(vm.BaseImage))
+	add("Agent version (image metadata)", monitorKnown(vm.AgentVersion))
+	if vm.StorageGiB != nil {
+		add("Storage", fmt.Sprintf("%d GiB", *vm.StorageGiB))
+	}
+	if vm.PID != nil {
+		add("PID", fmt.Sprint(*vm.PID))
+	}
+	if !vm.CreatedAt.IsZero() {
+		add("VM record created", vm.CreatedAt.Local().Format(time.RFC3339))
+	}
+	if !vm.Activity.HeartbeatAt.IsZero() {
+		age := max(0, m.lastSuccess.Sub(vm.Activity.HeartbeatAt)).Truncate(time.Second)
+		add("Last heartbeat at discovery", age.String()+" ago (host-observed)")
 	}
 	m.details.SetContent(strings.Join(lines, "\n"))
 }
 
-func (m fleetModel) inspector(l fleetLayout) []string {
-	title := "Instances"
-	if !m.navigatorFocus {
-		title += " · FOCUS"
-	}
-	if item := m.currentInstance(); item != nil {
-		title += " · " + item.Profile + " / " + filepath.Base(item.Project) + fmt.Sprintf(" · %d VM", len(m.filtered))
-	}
-	lines := []string{accent.Render(fleetText(title))}
-	lines = append(lines, m.table(l.inspectorWidth, l.rows)...)
-	detailTitle := "Machine"
-	if item := m.currentInstance(); item != nil {
-		detailTitle += " · " + item.Name
-	}
-	if m.details.TotalLineCount() > m.details.Height {
-		detailTitle += fmt.Sprintf(" · %.0f%% (PgUp/PgDn)", 100*m.details.ScrollPercent())
-	}
-	lines = append(lines, accent.Render(fleetText(detailTitle)), m.details.View())
-	return lines
-}
-
-func fleetBlock(lines []string, width, height int) []string {
-	var result []string
-	for _, line := range lines {
-		result = append(result, strings.Split(line, "\n")...)
-	}
-	result = result[:min(len(result), height)]
-	for len(result) < height {
-		result = append(result, "")
-	}
-	for i, line := range result {
-		line = ansi.Truncate(line, width, "…")
-		result[i] = line + strings.Repeat(" ", max(0, width-lipgloss.Width(line)))
-	}
-	return result
-}
-
 func (m fleetModel) View() string {
-	if m.width < 44 || m.height < 14 {
-		return ansi.Hardwrap("Terminal too small (minimum 46×14). Resize or q to quit.", m.width, true)
+	if m.width < 46 || m.height < 14 {
+		message := ansi.Hardwrap("Watch needs at least 46×14. Resize or q to quit.", m.width, true)
+		lines := strings.Split(message, "\n")
+		return strings.Join(lines[:min(len(lines), m.height)], "\n")
 	}
 	lines := m.heading()
-	for i := range lines {
-		lines[i] = ansi.Truncate(lines[i], m.width, "…")
-	}
-	lines = append(lines, "")
-	l := m.layout()
-	if len(m.snapshot.Instances) == 0 {
-		message := "Discovering instances…"
-		if m.errText != "" && !m.loaded {
-			message = "Cannot discover instances. Watch will retry."
-		} else if m.loaded {
-			message = "No running agentnook instances in this scope.\nStart nook in a watched project; watch stays open."
+	if vm := m.instance(); vm != nil {
+		lines = append(lines, monitorMuted.Render("Instances"))
+		lines = append(lines, m.list(len(lines)-1)...)
+		caption := monitorMachine(watchProject(*vm), vm.Name, "", m.width)
+		if m.details.TotalLineCount() > m.details.Height {
+			caption += " · PgUp/PgDn details"
 		}
-		lines = append(lines, fleetBlock([]string{ansi.Hardwrap(message, m.width, true)}, m.width, l.bodyHeight)...)
-	} else if l.split {
-		left := fleetBlock(m.navigator(l), l.navWidth, l.bodyHeight)
-		right := fleetBlock(m.inspector(l), l.inspectorWidth, l.bodyHeight)
-		for i := range left {
-			lines = append(lines, left[i]+muted.Render(" │ ")+right[i])
-		}
-	} else {
-		body := fleetBlock(m.navigator(l), m.width, 1+l.navHeight)
-		body = append(body, m.inspector(l)...)
-		lines = append(lines, fleetBlock(body, m.width, l.bodyHeight)...)
+		lines = append(lines, monitorTitle.Render(caption))
+		lines = append(lines, strings.Split(m.details.View(), "\n")...)
+	} else if m.loaded {
+		lines = append(lines, "No running agentnook instances in this scope.")
 	}
-	lines = append(lines, "", muted.Render(ansi.Truncate("¹ Image metadata · ² Record age, not uptime · CPU/RAM limits", m.width, "…")),
-		muted.Render(ansi.Truncate("Tab focus · ↑↓/jk VMs only · PgUp/PgDn details · q quit watch only", m.width, "…")))
-	return strings.Join(lines, "\n")
-}
-
-func fleetText(value string) string {
-	return strings.Map(func(r rune) rune {
-		if !unicode.IsPrint(r) {
-			return '?'
-		}
-		return r
-	}, value)
-}
-
-func unknown(value string) string {
-	if value == "" {
-		return "unknown"
-	}
-	return value
-}
-
-func fleetMemory(mib int) string {
-	if mib%1024 == 0 {
-		return fmt.Sprintf("%d GiB", mib/1024)
-	}
-	return fmt.Sprintf("%d MiB", mib)
-}
-
-func fleetOptional(value *int, suffix string) string {
-	if value == nil {
-		return "unknown"
-	}
-	return strconv.Itoa(*value) + suffix
-}
-
-func fleetCreated(value time.Time) string {
-	if value.IsZero() {
-		return "unknown"
-	}
-	return value.Local().Format(time.RFC3339)
-}
-
-func fleetUptime(item fleet.Instance) string {
-	if !item.Activity.Fresh {
-		return "unknown"
-	}
-	return (time.Duration(item.Activity.Report.UptimeSeconds) * time.Second).String()
-}
-
-func fleetHeartbeat(item fleet.Instance, now time.Time) string {
-	if item.Activity.HeartbeatAt.IsZero() {
-		return "unknown · awaiting heartbeat progress"
-	}
-	age := max(time.Duration(0), now.Sub(item.Activity.HeartbeatAt)).Truncate(time.Second)
-	value := age.String() + " ago (host-observed)"
-	if !item.Activity.Fresh {
-		value += " · stale / unavailable"
-	}
-	return value
+	lines = append(lines, monitorMuted.Render("↑↓/jk select VM · PgUp/PgDn details · q quit"))
+	return monitorView(lines, m.width)
 }

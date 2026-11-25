@@ -14,19 +14,15 @@ const watchUsage = `Usage: nook watch
 
 Watch running agentnook instances across all projects in the current AGENTNOOK_HOME.
 The current directory does not restrict discovery; other data homes stay excluded.
-Always-open navigator: profile > project > worktree > VM.
-Only VM rows are selectable; profile, project and worktree headings are skipped.
-The inspector follows the selected VM and lists VMs in its exact workspace/profile.
-Wide terminals show navigator left and inspector right; narrow terminals stack them.
+One list grouped by profile. VM rows show project, network mode and mount count.
+Only VM rows are selectable. Details for the selected VM appear below the list.
 Git grouping is optional and read-only; unavailable metadata falls back to folders.
 Uses smolvm machine ls --json and --verbose; refreshes after each poll (1s).
-Shows VM status, resource limits, image metadata and all mounts without tabs.
+Shows VM status, launch limits, network mode, and all mounts without tabs.
 Shows agent activity, runtime uptime and heartbeat from shared guest telemetry.
 Missing or stale agent telemetry remains unknown; VM status stays separate.
 
-Keys: up/down or j/k select VMs across the tree, skipping all group headings.
-      Tab/Shift+Tab switch navigator/instances without changing VM selection.
-      Left/h focuses navigator; Right/l focuses instances. No collapsing.
+Keys: up/down or j/k select VMs, skipping profile headings.
       PgUp/PgDn or Ctrl+U/Ctrl+D scroll details; Home/End jump within details.
       q, Esc or Ctrl+C exit watch only.
 Requires terminal input and output. Never starts or explicitly stops a VM.

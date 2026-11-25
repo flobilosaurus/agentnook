@@ -12,7 +12,7 @@ import (
 	"github.com/flobilosaurus/agentnook/internal/egress"
 )
 
-func TestNetworkHistoryTreeInTerminal(t *testing.T) {
+func TestNetworkOverviewAndGroupedHistoryInTerminal(t *testing.T) {
 	s := newSandbox(t)
 	for _, profile := range []string{"work", "personal"} {
 		_, stderr, code := s.run(t, s.project, "network-denial", 0, "--agent", "pi", "--profile", profile, "--agent-version", "1.4.0")
@@ -27,17 +27,18 @@ func TestNetworkHistoryTreeInTerminal(t *testing.T) {
 		return startTestTerminal(t, cmd)
 	}
 	view := startView()
-	view.expect(t, 8*time.Second, `\[Approvals\]`)
-	view.send(t, "\t")
-	view.expect(t, 5*time.Second, `\[History\]`)
-	view.send(t, "f")
-	view.expect(t, 5*time.Second, `├─ Profile personal · 1 VM`)
-	view.expect(t, 5*time.Second, `└─ Profile work · 1 VM`)
-	view.expect(t, 5*time.Second, `│  └─ ▸ VM pi · nook-run-[a-z0-9]+ · 2 events`)
-	view.expect(t, 5*time.Second, `│     ├─ DENIED DNS private\.example`)
+	view.expect(t, 8*time.Second, `Pending requests`)
+	view.expect(t, 5*time.Second, `Recent decisions`)
+	view.expect(t, 5*time.Second, `private\.example · DNS`)
+	view.send(t, "h")
+	view.expect(t, 5*time.Second, `Network History · read only`)
+	view.expect(t, 5*time.Second, `4 events · All VMs`)
+	view.expect(t, 5*time.Second, `Profile personal`)
+	view.expect(t, 5*time.Second, `Profile work`)
+	view.expect(t, 5*time.Second, ` · VM [a-z0-9]{10} · pi · ended`)
+	view.expect(t, 5*time.Second, `▸ private\.example · DNS.*DENIED`)
 	view.send(t, "j")
-	view.expect(t, 5*time.Second, `   └─ ▸ VM pi · nook-run-[a-z0-9]+ · 2 events`)
-	view.expect(t, 5*time.Second, `      └─ DENIED TCP 100\.96\.0\.1:1455`)
+	view.expect(t, 5*time.Second, `▸ 100\.96\.0\.1:1455 · TCP.*DENIED`)
 	view.send(t, "q")
 	view.wait(t)
 
@@ -46,8 +47,8 @@ func TestNetworkHistoryTreeInTerminal(t *testing.T) {
 		t.Fatal(archive.Machines, err)
 	}
 	view = startView("--machine", archive.Machines[0].Machine)
-	view.expect(t, 8*time.Second, `\[History\]`)
-	view.expect(t, 5*time.Second, `▸ VM pi · `+archive.Machines[0].Machine)
+	view.expect(t, 8*time.Second, `Network History · read only`)
+	view.expect(t, 5*time.Second, `2 events · `+archive.Machines[0].Machine)
 	view.send(t, "q")
 	view.wait(t)
 }

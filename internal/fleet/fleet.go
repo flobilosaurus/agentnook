@@ -35,6 +35,7 @@ type Instance struct {
 	Workspace                   Workspace
 	ImageName, BaseImage        string
 	Agent, AgentVersion         string
+	Network                     string // Launch label; empty for older machines.
 	CPUs, MemoryMiB             int
 	PID                         *int
 	StorageGiB                  *int
@@ -125,8 +126,12 @@ func (s *Source) Load(ctx context.Context) (Snapshot, error) {
 		if artifact := machine.Labels["agentnook.image"]; filepath.IsAbs(artifact) && filepath.Clean(artifact) == artifact && strings.HasSuffix(artifact, ".smolmachine") && !unsafeText(artifact) {
 			image = artifact
 		}
+		network := machine.Labels["agentnook.network"]
+		if network != "ask" && network != "full" {
+			network = ""
+		}
 		result.Instances = append(result.Instances, Instance{
-			Name: machine.Name, State: machine.State, Profile: profile, Image: image, Agent: agent, Project: project,
+			Name: machine.Name, State: machine.State, Profile: profile, Image: image, Agent: agent, Project: project, Network: network,
 			CPUs: machine.CPUs, MemoryMiB: machine.MemoryMiB, PID: machine.PID,
 			StorageGiB: machine.StorageGiB, CreatedAt: created, Ephemeral: machine.Ephemeral || machine.Labels["agentnook.ephemeral"] == "true", Mounts: shares,
 			Activity: s.activitySample(machine.Name, shares, usedReaders),
