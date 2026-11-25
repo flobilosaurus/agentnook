@@ -31,6 +31,24 @@ Beim ersten Start Agent und Profil wählen, danach im Agenten anmelden. `nook` b
 | `nook network` | Netzwerkhistorie und offene TCP-Freigaben anzeigen |
 | `nook --help-all` | Alle Optionen anzeigen |
 
+## Einblicke ins Terminal
+
+### `nook watch`
+
+Vier laufende Pi-VMs in zwei Profilen. Links steht die Projektübersicht, rechts die ausgewählte VM mit Status, Ressourcen und Mounts.
+
+![Watch-Ansicht mit vier laufenden Pi-VMs in den Profilen private und work](docs/screenshots/watch.png)
+
+### `nook network`
+
+Zwei offene TCP-Anfragen im Modus `--network ask`. Für die ausgewählte Anfrage zeigt die Ansicht Ziel-IP, Port und den ungeprüften HTTP-Hostnamen.
+
+![Network-Ansicht mit offenen Freigaben für github.com und example.com](docs/screenshots/network.png)
+
+Mit `Tab` wechselst du zur Historie. Sie zeigt die protokollierten Netzentscheidungen pro VM. `ALLOWED` bedeutet, dass die Richtlinie den Zugriff erlaubt hat, nicht dass die Verbindung erfolgreich war.
+
+![Network-Historie mit erlaubten DNS-Anfragen sowie erlaubten und abgelehnten TCP-Verbindungen](docs/screenshots/network-history.png)
+
 ## Grenzen der Isolation
 
 Projektordner und ausgewähltes Agenten-HOME sind beschreibbar. Änderungen dort und an weiteren beschreibbaren Freigaben bleiben bestehen. Der Agent hat Zugriff auf die Logins seines Profils. Teile Profile daher nur zwischen vertrauenswürdigen Projekten.
