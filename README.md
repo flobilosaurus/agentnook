@@ -34,14 +34,14 @@ Danach `nook` im Projektordner starten.
 
 `nook watch` zeigt laufende Agenten-VMs über alle Projekte hinweg, gruppiert nach Profil.
 
-![Watch-Ansicht mit vier laufenden Pi-VMs in den Profilen private und work](docs/screenshots/watch.png)
+![Watch-Ansicht mit laufenden Pi-, OpenCode- und Claude-Code-VMs in den Profilen private und work](docs/screenshots/watch.png)
 
 ### `nook network`
 
 Mit `nook network` entscheidest du im Modus `--network ask`, welche ausgehenden TCP-Verbindungen der Agent aufbauen darf. Im Audit siehst du gespeicherte Netzwerkentscheidungen auch nach Ende der VM: erlaubte und blockierte Zugriffe in `ask`, nur blockierte in `full`.
 
-![Network-Ansicht mit offenen Freigaben für github.com und example.com](docs/screenshots/network.png)
+![Network-Ansicht mit zwei offenen TCP-Anfragen und den letzten Netzwerkentscheidungen](docs/screenshots/network.png)
 
 Im Audit siehst du gespeicherte Netzwerkentscheidungen auch nach Ende der VM: erlaubte und blockierte Zugriffe in ask, nur blockierte in full.
 
-![Network-Historie mit erlaubten DNS-Anfragen sowie erlaubten und abgelehnten TCP-Verbindungen](docs/screenshots/network-history.png)
+![Audit mit erlaubten und blockierten Zugriffen laufender und beendeter VMs](docs/screenshots/network-history.png)
