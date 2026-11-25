@@ -28,6 +28,30 @@ Danach `nook` im Projektordner starten.
 | `nook network` | Netzwerkhistorie und offene TCP-Freigaben anzeigen |
 | `nook --help-all` | Alle Optionen anzeigen |
 
+## Einstellungen / Skills / Erweiterungen des Agenten bearbeiten
+
+Ein **Profil** wie `arbeit` oder `privat` speichert Logins, Einstellungen, Skills und Erweiterungen pro Agent. Die Daten bleiben nach VM-Ende erhalten und werden in allen Projekten mit demselben Profil und Agenten wiederverwendet.
+
+Auf dem Host: `~/.agentnook/profiles/<profil>/<agent>/`. Ist `AGENTNOOK_HOME` gesetzt, liegt `profiles/` dort. In der VM ist der jeweilige Agentenordner das Home-Verzeichnis (`~`).
+
+**Einstellungen und Skills:** Änderst du in einer Pi-VM Einstellungen oder fügst einen Skill im Profil `arbeit` hinzu, nutzen andere Pi-Sessions mit `arbeit` dieselben Dateien. In bereits laufenden Sessions lädt `/reload` die Änderungen ein; neue Pi-Starts lesen sie automatisch. Manche Einstellungen, etwa der Standard-Denkmodus, greifen erst beim Start. Andere Profile bleiben unverändert.
+
+| Agent | Einstellungsdatei in der VM | Skill-Ordner in der VM |
+| --- | --- | --- |
+| Pi | `~/.pi/agent/settings.json` | `~/.pi/agent/skills/` |
+| OpenCode v2 | `~/.config/opencode/opencode.json` | `~/.config/opencode/skills/` |
+| Claude Code | `~/.claude/settings.json` | `~/.claude/skills/` |
+
+**Erweiterungen installieren:** Platzhalter durch Paket- oder Plugin-Namen ersetzen:
+
+```sh
+nook --agent pi --profile arbeit -- install npm:PAKETNAME </dev/null
+nook --agent opencode --profile arbeit -- plugin add PAKETNAME
+nook --agent claude --profile arbeit -- plugin install PLUGIN@MARKETPLACE --scope user
+```
+
+Lokale Erweiterungen gehören bei Pi nach `~/.pi/agent/extensions/`, bei OpenCode nach `~/.config/opencode/plugins/` (VM-Pfade). Danach Agent neu starten.
+
 ## Einblicke ins Terminal
 
 ### `nook watch`
