@@ -42,6 +42,9 @@ jobs:
       - name: Check formatting, tests, vet and build
         run: mise run check
 
+      - name: Test release-note generation
+        run: python3 -B -m unittest discover -s scripts -p test_release_notes.py
+
   vm:
     name: Real VM tests (Linux AMD64)
     needs: check
@@ -127,6 +130,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Install Go
         uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
@@ -139,6 +143,12 @@ jobs:
             echo "Expected a version tag such as v1.2.3 or v1.2.3-rc.1" >&2
             exit 1
           fi
+
+      - name: Generate Conventional Commit release notes
+        run: |
+          mkdir -p dist
+          python3 scripts/release-notes.py "$TAG" \
+            --repository-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" > dist/release-notes.md
 
       - name: Build release archives
         run: |
@@ -168,7 +178,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          args=(--verify-tag --generate-notes --title "$TAG")
+          args=(--verify-tag --notes-file dist/release-notes.md --title "$TAG")
           if [[ "${TAG%%+*}" == *-* ]]; then
             args+=(--prerelease)
           fi

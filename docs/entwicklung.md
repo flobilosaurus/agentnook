@@ -23,7 +23,15 @@ git push origin v1.2.3
 
 Release-Tags verwenden `vMAJOR.MINOR.PATCH`, optional mit Prerelease-/Build-Suffix. Tags wie `v1.2.3-rc.1` werden als GitHub-Prerelease markiert. Bereits vorhandene Tags lösen keinen nachträglichen Release-Build aus; veröffentlicht wird beim Tag-Push.
 
-Assets: `nook_<TAG>_darwin_arm64.tar.gz`, `nook_<TAG>_linux_amd64.tar.gz`, `nook_<TAG>_linux_arm64.tar.gz` sowie `checksums.txt` (SHA256). Archive enthalten `nook`, README und Drittlizenznachweise; `nook --version` zeigt den Tag. Release-Notizen werden automatisch erzeugt. VM-Images werden weiterhin lokal gebaut und nicht veröffentlicht.
+Assets: `nook_<TAG>_darwin_arm64.tar.gz`, `nook_<TAG>_linux_amd64.tar.gz`, `nook_<TAG>_linux_arm64.tar.gz` sowie `checksums.txt` (SHA256). Archive enthalten `nook`, README und Drittlizenznachweise; `nook --version` zeigt den Tag. VM-Images werden weiterhin lokal gebaut und nicht veröffentlicht.
+
+Release-Notizen entstehen aus **Conventional Commits** (`feat:`, `fix:`, `docs:` usw.), auch bei direkten Pushes ohne PR. Sie sind nach Typ gruppiert; `!` im Betreff oder `BREAKING CHANGE:` im Commit-Text erzeugt einen eigenen Abschnitt. Merge-Commits und Betreffe ohne Conventional-Commit-Format werden ausgelassen. Basis ist der höchste niedrigere stabile Versionstag, der vom neuen Tag aus erreichbar ist. Prereleases verwenden dieselbe stabile Basis wie das spätere Release; beim ersten Release zählt die gesamte erreichbare Historie.
+
+Vorschau für einen vorhandenen Tag (vollständige Git-Historie nötig):
+
+```sh
+python3 scripts/release-notes.py v0.2.0 --repository-url https://github.com/flobilosaurus/agentnook
+```
 
 Veröffentlichung nutzt den eingebauten `GITHUB_TOKEN`; kein zusätzliches Secret nötig. Schreibrechte auf Repository-Inhalte erhält nur der Release-Job.
 
