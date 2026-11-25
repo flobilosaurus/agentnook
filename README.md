@@ -60,6 +60,12 @@ Lokale Erweiterungen gehören bei Pi nach `~/.pi/agent/extensions/`, bei OpenCod
 
 ![Watch-Ansicht mit laufenden Pi-, OpenCode- und Claude-Code-VMs in den Profilen private und work](docs/screenshots/watch.png)
 
+### Herdr
+
+Startest du `nook` interaktiv in einem [Herdr](https://herdr.dev/)-Pane, meldet es den Status von Pi, OpenCode v2 oder Claude Code automatisch an dieses Pane. So siehst du in Herdr, welcher Agent arbeitet (`working`), bereit ist (`idle`) oder auf deine Eingabe wartet (`blocked`), ohne zum jeweiligen Tab wechseln zu müssen.
+
+Herdr kann aus Statuswechseln in Hintergrund-Tabs Benachrichtigungen erzeugen: **Braucht Aufmerksamkeit** beim Wechsel zu `blocked`, **Fertig** beim Wechsel von `working` oder `blocked` zu `idle`.
+
 ### `nook network`
 
 Mit `nook network` entscheidest du im Modus `--network ask`, welche ausgehenden TCP-Verbindungen der Agent aufbauen darf. Im Audit siehst du gespeicherte Netzwerkentscheidungen auch nach Ende der VM: erlaubte und blockierte Zugriffe in `ask`, nur blockierte in `full`.
