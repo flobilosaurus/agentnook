@@ -80,7 +80,7 @@ func TestBuildRegistersArchiveAndDefaultWithoutProjectContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Images) != 1 || c.Images[0] != entry || c.DefaultImages["pi"] != entry.Name {
+	if len(c.Images) != 1 || !reflect.DeepEqual(c.Images[0], entry) || c.DefaultImages["pi"] != entry.Name {
 		t.Fatalf("wrong catalog/default: %+v", c)
 	}
 	if entry.VM.CPUs != 2 || entry.VM.Memory != 2048 || entry.Architecture != runtime.GOARCH {

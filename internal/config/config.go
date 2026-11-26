@@ -62,11 +62,12 @@ type Workspace struct {
 }
 
 type BuiltImage struct {
-	Name         string  `toml:"name"`
-	BaseImage    string  `toml:"base_image"`
-	Architecture string  `toml:"architecture"`
-	BuiltAt      string  `toml:"built_at"`
-	VM           Options `toml:"vm"`
+	Name         string   `toml:"name"`
+	BaseImage    string   `toml:"base_image"`
+	Architecture string   `toml:"architecture"`
+	BuiltAt      string   `toml:"built_at"`
+	Tools        []string `toml:"tools,omitempty"`
+	VM           Options  `toml:"vm"`
 }
 
 type Config struct {
@@ -168,6 +169,7 @@ func (c *Config) AddImage(entry BuiltImage) error {
 	sort.Slice(c.Images, func(i, j int) bool { return c.Images[i].Name < c.Images[j].Name })
 	return nil
 }
+
 func (entry BuiltImage) Validate() error {
 	if err := ValidateProfileName(entry.Name); err != nil {
 		return fmt.Errorf("image name: %w", err)
@@ -183,6 +185,11 @@ func (entry BuiltImage) Validate() error {
 	}
 	if !filepath.IsAbs(entry.VM.Image) || filepath.Clean(entry.VM.Image) != entry.VM.Image || !strings.HasSuffix(entry.VM.Image, ".smolmachine") {
 		return fmt.Errorf("image %q: artifact must be a clean absolute .smolmachine path; old .tar images are not supported; back up config.toml, remove old image/default/project selections and rebuild with nook images build NAME --agent %s (keep profiles/ for existing logins)", entry.Name, entry.VM.Agent)
+	}
+	for _, tool := range entry.Tools {
+		if err := ValidateToolSpec(tool); err != nil {
+			return fmt.Errorf("image %q: %w", entry.Name, err)
+		}
 	}
 	return entry.VM.Validate()
 }

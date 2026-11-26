@@ -116,6 +116,9 @@ func Interactive(tty bool, pass, flags, commands []string) bool {
 	return true
 }
 
+// ImagePackages are installed by apt in every managed image build.
+const ImagePackages = "git ripgrep fd-find ca-certificates"
+
 // InstallScript provisions a clean Node/Debian VM; AGENT_VERSION is passed as env,
 // never interpolated into shell source. Only the selected package's lifecycle
 // scripts are approved, never all dependency scripts. Build-only state stays outside /root.
@@ -126,7 +129,7 @@ export XDG_CACHE_HOME="$HOME/.cache" XDG_STATE_HOME="$HOME/.local/state"
 export DISABLE_AUTOUPDATER=1 DEBIAN_FRONTEND=noninteractive
 mkdir -p "$HOME" /workspace
 apt-get update
-apt-get install -y --no-install-recommends git ripgrep fd-find ca-certificates
+apt-get install -y --no-install-recommends ` + ImagePackages + `
 rm -rf /var/lib/apt/lists/*
 npm install --global --allow-scripts=` + spec.Package + ` ` + spec.Package + `@"${AGENT_VERSION}"
 npm cache clean --force

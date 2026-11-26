@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -24,6 +25,7 @@ type BuildOptions struct {
 	Name, BaseImage string
 	VM              config.Options
 	Adapter         agents.Agent
+	Tools           []string
 }
 
 // Build registers nothing until provisioning, packing, verification and cleanup
@@ -37,7 +39,7 @@ func Build(p paths.Paths, options BuildOptions, streams vm.IO, setDefault bool) 
 	}
 	entry := config.BuiltImage{
 		Name: options.Name, BaseImage: options.BaseImage, Architecture: runtime.GOARCH,
-		BuiltAt: time.Now().UTC().Format(time.RFC3339), VM: options.VM,
+		BuiltAt: time.Now().UTC().Format(time.RFC3339), VM: options.VM, Tools: slices.Clone(options.Tools),
 	}
 	entry.VM.Image = filepath.Join(p.Root, "images", options.Name, "image.smolmachine")
 	if err := entry.Validate(); err != nil {
@@ -118,6 +120,12 @@ func Build(p paths.Paths, options BuildOptions, streams vm.IO, setDefault bool) 
 		"--env", "AGENT_VERSION="+entry.VM.AgentVersion, "--", "sh", "-eu", "-c", options.Adapter.InstallScript()); err != nil {
 		return result, err
 	}
+	if len(entry.Tools) > 0 {
+		args := []string{"machine", "exec", "--name", name, "--stream", "--", "/bin/sh", "-eu", "-c", installMise, "agentnook-mise"}
+		if err := run("install mise tools", append(args, entry.Tools...)...); err != nil {
+			return result, err
+		}
+	}
 	if err := run("stop build VM", "machine", "stop", "--name", name); err != nil {
 		return result, err
 	}
@@ -150,9 +158,13 @@ func Build(p paths.Paths, options BuildOptions, streams vm.IO, setDefault bool) 
 		return result, err
 	}
 	// A successful boot is not sufficient: assert installed state in a fresh VM.
-	if err := run("verify packed agent", "machine", "run", "--from", entry.VM.Image,
-		"--env", "AGENT_VERSION="+entry.VM.AgentVersion,
-		"--", "sh", "-eu", "-c", agents.VersionCheck(options.Adapter.Spec())); err != nil {
+	verify := agents.VersionCheck(options.Adapter.Spec())
+	if len(entry.Tools) > 0 {
+		verify += verifyMise
+	}
+	args := []string{"machine", "run", "--from", entry.VM.Image,
+		"--env", "AGENT_VERSION=" + entry.VM.AgentVersion, "--", "/bin/sh", "-eu", "-c", verify}
+	if err := run("verify packed image", WithTools(args, entry)...); err != nil {
 		return result, err
 	}
 	if err := cleanup(); err != nil {
@@ -189,10 +201,14 @@ func FindByReference(entries []config.BuiltImage, reference string) (config.Buil
 
 func Summary(options config.Options, entries []config.BuiltImage, catalog agents.Catalog) string {
 	name, base, version := options.Image, "unknown", "unknown"
+	var tools string
 	if entry, found := FindByReference(entries, options.Image); found {
 		name, base, version = entry.Name, entry.BaseImage, entry.VM.AgentVersion+" (built)"
+		if len(entry.Tools) > 0 {
+			tools = "\nTools (mise): " + strings.Join(entry.Tools, ", ")
+		}
 	}
-	return fmt.Sprintf("Image: %s\nLinux base: %s\n%s: %s · CPU: %d · RAM: %d MiB", name, base, catalog.Label(options.Agent), version, options.CPUs, options.Memory)
+	return fmt.Sprintf("Image: %s\nLinux base: %s\n%s: %s · CPU: %d · RAM: %d MiB%s", name, base, catalog.Label(options.Agent), version, options.CPUs, options.Memory, tools)
 }
 
 // List is read-only; it never pulls images or starts a VM.
@@ -202,7 +218,7 @@ func List(out io.Writer, c config.Config, current string) error {
 		return err
 	}
 	w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tAGENT\tVERSION\tLINUX BASE\tCPU\tRAM MiB\tARCH\tLOCAL\tDEFAULT\tCURRENT")
+	fmt.Fprintln(w, "NAME\tAGENT\tVERSION\tLINUX BASE\tCPU\tRAM MiB\tARCH\tLOCAL\tDEFAULT\tCURRENT\tMISE TOOLS")
 	for _, entry := range c.Images {
 		status := "missing"
 		if Available(entry) {
@@ -214,9 +230,13 @@ func List(out io.Writer, c config.Config, current string) error {
 			}
 			return "-"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\n",
+		tools := "-"
+		if len(entry.Tools) > 0 {
+			tools = strings.Join(entry.Tools, ", ")
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
 			entry.Name, entry.VM.Agent, entry.VM.AgentVersion, entry.BaseImage, entry.VM.CPUs, entry.VM.Memory,
-			entry.Architecture, status, mark(strings.EqualFold(c.DefaultImages[entry.VM.Agent], entry.Name)), mark(current == entry.VM.Image))
+			entry.Architecture, status, mark(strings.EqualFold(c.DefaultImages[entry.VM.Agent], entry.Name)), mark(current == entry.VM.Image), tools)
 	}
 	if err := w.Flush(); err != nil {
 		return err

@@ -20,7 +20,7 @@ func TestImageCatalogRoundTripAndDuplicates(t *testing.T) {
 	if err := c.AddImage(entry); err != nil {
 		t.Fatal(err)
 	}
-	if found, ok := c.FindImage("WORK-v1"); !ok || found != entry {
+	if found, ok := c.FindImage("WORK-v1"); !ok || !reflect.DeepEqual(found, entry) {
 		t.Fatalf("case-insensitive lookup: %+v %v", found, ok)
 	}
 	duplicate := entry
@@ -59,6 +59,8 @@ func TestRejectInvalidCatalog(t *testing.T) {
 		func(e *BuiltImage) { e.VM.Agent = "bad/name" },
 		func(e *BuiltImage) { e.VM.AgentVersion = "latest" },
 		func(e *BuiltImage) { e.VM.Memory = 0 },
+		func(e *BuiltImage) { e.Tools = []string{"--help"} },
+		func(e *BuiltImage) { e.Tools = []string{"rg\nfd"} },
 	} {
 		c := Empty()
 		entry := catalogEntry()

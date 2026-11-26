@@ -61,7 +61,7 @@ func TestRemoveUnusedArchivePreservesDefaultsProjectsAndProfile(t *testing.T) {
 	before, _ := config.Load(p.ConfigFile())
 	t.Setenv("PATH", "")
 	removed, err := Remove(p, strings.ToUpper(entry.Name))
-	if err != nil || removed != entry {
+	if err != nil || !reflect.DeepEqual(removed, entry) {
 		t.Fatalf("remove: %+v %v", removed, err)
 	}
 	after, err := config.Load(p.ConfigFile())

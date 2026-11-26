@@ -24,9 +24,32 @@ Danach `nook` im Projektordner starten.
 | `nook -- --continue` | Argumente an den Agenten weitergeben |
 | `nook --mount ../lib:/mnt/lib:ro` | Zusätzlichen Ordner schreibgeschützt freigeben |
 | `nook images` | Lokale Images anzeigen |
+| `nook images status` | Aufbau der Images und Toollisten anzeigen |
 | `nook watch` | Laufende VMs projektübergreifend anzeigen |
 | `nook network` | Netzwerkhistorie und offene TCP-Freigaben anzeigen |
 | `nook --help-all` | Alle Optionen anzeigen |
+
+## Images und Tools
+
+`nook images build` installiert zusätzliche Tools mit [mise](https://mise.jdx.dev/) fest ins Image.
+
+**`--tool NAME@VERSION`** gibt ein Tool direkt an. Wiederhole das Flag für weitere Tools:
+
+```sh
+nook images build pi-dev --agent pi --tool rg@14.1.1 --tool fd@10.3.0
+```
+
+**`--mise-config PFAD`** übernimmt `[tools]` aus einer mise-TOML-Datei, ohne Tasks oder Hooks auszuführen:
+
+```sh
+nook images build pi-dev --agent pi --mise-config ./mise.toml
+```
+
+Beide Flags lassen sich kombinieren.
+
+`nook images status` zeigt die Images, ihre Tools und die gespeicherten Projektzuordnungen, ohne eine VM zu starten.
+
+![Image-Status mit ausgewähltem Pi-Image, mise-Tools und aufgeklappter Projektzuordnung](docs/screenshots/images-status.png)
 
 ## Einstellungen / Skills / Erweiterungen des Agenten bearbeiten
 

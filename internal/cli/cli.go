@@ -28,6 +28,7 @@ var Version = "dev"
 const usage = `Usage: nook [-- AGENT_ARGS...]
        nook watch
        nook network
+       nook images status
 
 Run your coding agent in a fresh local VM.
 First run: choose an agent and profile; nook builds the image automatically.
@@ -49,6 +50,7 @@ Examples:
   nook                    Set up once, then start with the saved choices
   nook -- --continue      Pass arguments to your saved agent
   nook watch              Watch all projects in this AGENTNOOK_HOME
+  nook images status      Show image composition and configured tools without a VM
 
 Requires smolvm >= 1.36.1; Docker is not needed.
 Agent logins stay in an isolated profile; host agent files are never imported.
@@ -69,6 +71,7 @@ Advanced options (not needed for normal starts):
 
 Image management:
   nook images
+  nook images status
   nook images build NAME --agent NAME [OPTIONS]
   nook images default NAME
   nook images remove NAME
@@ -439,6 +442,11 @@ func (a App) Run(args []string) int {
 	if err := usableImage(managedImage); err != nil {
 		return a.fail(1, err)
 	}
+	if len(managedImage.Tools) > 0 {
+		if err := config.ValidateMounts(selected.Mounts, images.MiseDir); err != nil {
+			return a.fail(2, err)
+		}
+	}
 	vmArgs := vm.Args(project, p.AgentDir(selected.Profile, agent), selected.VM, adapter, a.Interactive(), pass, selected.Mounts...)
 	networkArgs := []string{"machine", "run"}
 	if selected.Network == "ask" {
@@ -449,7 +457,7 @@ func (a App) Run(args []string) int {
 	}
 	vmArgs = append(networkArgs, vmArgs[2:]...)
 	if *dryRun {
-		data, err := json.MarshalIndent(append([]string{"smolvm"}, vmArgs...), "", "  ")
+		data, err := json.MarshalIndent(append([]string{"smolvm"}, images.WithTools(vmArgs, managedImage)...), "", "  ")
 		if err != nil {
 			return a.fail(1, err)
 		}
@@ -516,6 +524,7 @@ func (a App) Run(args []string) int {
 			bridge.Start()
 		}
 	}
+	vmArgs = images.WithTools(vmArgs, managedImage)
 	streams := vm.IO{In: a.In, Out: a.Out, Err: a.Err}
 	historyInfo := egress.Info{Project: project, Profile: selected.Profile, Agent: agent}
 	if selected.Network == "ask" {

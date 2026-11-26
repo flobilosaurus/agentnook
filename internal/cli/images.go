@@ -15,6 +15,7 @@ import (
 
 const imagesUsage = `Usage:
   nook images                       List managed builds and launch presets
+  nook images status                Inspect image composition and project assignments
   nook images build NAME [OPTIONS]  Build an agent image and save a local .smolmachine artifact
   nook images default NAME          Set default image for its agent type
   nook images remove NAME           Delete an unused managed artifact and catalog entry
@@ -26,6 +27,8 @@ Build options:
   --cpus N                 CPU launch preset (default: configured resources)
   --mem MiB                RAM launch preset
   --storage GiB            Disk launch preset
+  --mise-config PATH       Read [tools] from a mise TOML file (strings or arrays of strings)
+  --tool TOOL[@VERSION]    Install with mise into the image (repeatable; appended after file tools)
   --set-default            Use successful build as default for this agent
 
 Builds and launches require smolvm >= 1.36.1; Docker is not needed.
@@ -40,6 +43,9 @@ func (a App) imageCommand(args []string) int {
 		fmt.Fprint(a.Out, imagesUsage)
 		return 0
 	}
+	if len(args) > 0 && args[0] == "status" {
+		return a.imagesStatusCommand(args[1:])
+	}
 	p, err := paths.Resolve()
 	if err != nil {
 		return a.fail(1, err)
@@ -49,14 +55,7 @@ func (a App) imageCommand(args []string) int {
 		return a.fail(1, fmt.Errorf("config: %w", err))
 	}
 	if len(args) == 0 {
-		current := ""
-		if cwd, err := os.Getwd(); err == nil {
-			if project, err := config.NormalizeProjectPath(cwd); err == nil {
-				w := c.Projects[project]
-				current = w.Agents[w.Agent].VM.Image
-			}
-		}
-		if err := images.List(a.Out, c, current); err != nil {
+		if err := images.List(a.Out, c, currentImage(c)); err != nil {
 			return a.fail(1, err)
 		}
 		return 0
@@ -80,6 +79,22 @@ func (a App) imageCommand(args []string) int {
 		memory := fs.Int("mem", c.Resources.Memory, "RAM launch preset")
 		storage := fs.Int("storage", c.Resources.Storage, "disk launch preset")
 		setDefault := fs.Bool("set-default", false, "default build for this agent")
+		var tools []string
+		var miseConfig string
+		fs.Func("mise-config", "mise TOML file to read tools from", func(path string) error {
+			if path == "" || miseConfig != "" {
+				return errors.New("--mise-config requires one non-empty file path")
+			}
+			miseConfig = path
+			return nil
+		})
+		fs.Func("tool", "mise tool to bake into the image", func(spec string) error {
+			if err := config.ValidateToolSpec(spec); err != nil {
+				return err
+			}
+			tools = append(tools, spec)
+			return nil
+		})
 		if err := fs.Parse(args[2:]); err != nil {
 			if errors.Is(err, flag.ErrHelp) {
 				return 0
@@ -105,6 +120,13 @@ func (a App) imageCommand(args []string) int {
 		if _, found := c.FindImage(args[1]); found {
 			return a.fail(1, fmt.Errorf("image %q already exists; choose a new build name", args[1]))
 		}
+		if miseConfig != "" {
+			fileTools, err := config.LoadMiseTools(miseConfig)
+			if err != nil {
+				return a.fail(2, fmt.Errorf("--mise-config %q: %w", miseConfig, err))
+			}
+			tools = append(fileTools, tools...)
+		}
 		if *version == "" {
 			resolve := a.LatestVersion
 			if resolve == nil {
@@ -122,7 +144,7 @@ func (a App) imageCommand(args []string) int {
 		if err := o.Validate(); err != nil {
 			return a.fail(2, err)
 		}
-		entry, err := images.Build(p, images.BuildOptions{Name: args[1], BaseImage: *base, VM: o, Adapter: adapter}, vm.IO{In: a.In, Out: a.Out, Err: a.Err}, *setDefault)
+		entry, err := images.Build(p, images.BuildOptions{Name: args[1], BaseImage: *base, VM: o, Adapter: adapter, Tools: tools}, vm.IO{In: a.In, Out: a.Out, Err: a.Err}, *setDefault)
 		if err != nil {
 			return a.fail(1, err)
 		}
@@ -174,6 +196,20 @@ func (a App) imageCommand(args []string) int {
 	default:
 		return a.fail(2, fmt.Errorf("unknown images command %q; use nook images --help", args[0]))
 	}
+}
+
+func currentProjectPath() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	project, _ := config.NormalizeProjectPath(cwd)
+	return project
+}
+
+func currentImage(c config.Config) string {
+	w := c.Projects[currentProjectPath()]
+	return w.Agents[w.Agent].VM.Image
 }
 
 func usableImage(entry config.BuiltImage) error {

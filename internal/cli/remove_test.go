@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestRemoveImageCommandNeedsNoDockerOrVM(t *testing.T) {
 		t.Fatal("remove prompted, launched or lacked confirmation")
 	}
 	c := f.load(t)
-	if len(c.Images) != 1 || c.Images[0] != keep {
+	if len(c.Images) != 1 || !reflect.DeepEqual(c.Images[0], keep) {
 		t.Fatalf("wrong catalog after removal: %+v", c.Images)
 	}
 	if _, err := os.Stat(filepath.Dir(entry.VM.Image)); !os.IsNotExist(err) {

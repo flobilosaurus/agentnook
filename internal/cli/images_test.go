@@ -221,6 +221,39 @@ func TestDryRunCatalogImageDoesNotChangeConfig(t *testing.T) {
 	}
 }
 
+func TestImageBuildRejectsInvalidToolBeforeVersionLookup(t *testing.T) {
+	f := setup(t)
+	for _, tool := range []string{"", "--help", "rg\nfd"} {
+		f.run(t, 2, "images", "build", "bad", "--agent", "pi", "--tool="+tool)
+		if !strings.Contains(f.errOut.String(), "invalid mise tool") {
+			t.Fatalf("unexpected error for tool %q: %s", tool, &f.errOut)
+		}
+	}
+	assertNoData(t, f)
+}
+
+func TestImageBuildRejectsInvalidMiseConfigBeforeVersionLookup(t *testing.T) {
+	f := setup(t)
+	if err := os.WriteFile(filepath.Join(f.project, "bad.toml"), []byte("[tools]\nrg = 14\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, flags := range [][]string{
+		{"--mise-config="},
+		{"--mise-config", "missing.toml"},
+		{"--mise-config", "bad.toml"},
+		{"--mise-config", "first.toml", "--mise-config", "second.toml"},
+	} {
+		f.run(t, 2, append([]string{"images", "build", "bad", "--agent", "pi"}, flags...)...)
+		if !strings.Contains(f.errOut.String(), "mise-config") {
+			t.Fatalf("missing flag context for %v: %s", flags, &f.errOut)
+		}
+	}
+	if f.resolves != 0 {
+		t.Fatal("invalid mise config triggered version lookup")
+	}
+	assertNoData(t, f)
+}
+
 func TestImageCommandErrorsAndHelp(t *testing.T) {
 	for _, args := range [][]string{
 		{"images", "--help"}, {"images", "build", "--help"}, {"images", "build", "x", "--help"},

@@ -111,8 +111,15 @@ func main() {
 		}
 	case "machine exec":
 		if build {
-			if os.Getenv("AGENTNOOK_TEST_ACTION") == "build-fail" {
+			switch os.Getenv("AGENTNOOK_TEST_ACTION") {
+			case "build-fail":
 				os.Exit(7)
+			case "tools-fail":
+				for _, arg := range args {
+					if arg == "agentnook-mise" {
+						os.Exit(9)
+					}
+				}
 			}
 			return
 		}
