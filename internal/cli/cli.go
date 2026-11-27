@@ -27,77 +27,80 @@ import (
 
 var Version = "dev"
 
-const usage = `Usage: nook [-- AGENT_ARGS...]
-       nook watch
-       nook network
-       nook images status
+const usage = `Usage: nook [LAUNCH_OPTIONS] [-- AGENT_ARGS...]
+       nook <command> [args...]
 
-Run your coding agent in a fresh local VM.
-First run: choose an agent and profile; nook builds the image automatically.
-Later runs: reuse this folder's saved setup without asking.
+Start an agent in a local VM. First run sets up this folder;
+next runs reuse the saved setup. Use --select to change it.
 
-Options:
-  --select                Change this folder's saved setup
-  --mount HOST:GUEST[:ro]  Add directory shares; repeat to replace the saved list
-  --clear-mounts          Remove saved extra directory shares
-  --env NAME              Forward exported host variables; repeat to replace the saved list
-  --clear-env             Remove saved environment variable forwards
-  --network ask|full      Save TCP approval mode (default: full); Host/LAN stays blocked
-  --allow-private CIDR    Replace saved private-network exceptions (repeatable; full only)
-  --clear-allow-private   Remove saved private-network exceptions
-  watch                   Open VMs, Approvals, Audit and Images in one terminal UI
-  network                 Open the Approvals tab (use --json for scripting)
-  --help-all              Show advanced agent, image and resource options
-  -h, --help              Show help
-  --version               Show launcher version
+Commands:
+  nook images   List and manage agent images
+  nook watch    Monitor VMs, network activity and images
+  nook network  Review outbound approvals and audit history
 
-Examples:
-  nook                    Set up once, then start with the saved choices
-  nook -- --continue      Pass arguments to your saved agent
-  nook watch              Monitor VMs, network and images in this AGENTNOOK_HOME
-  nook images status      Show image composition and configured tools without a VM
+Everything after -- is passed unchanged to your agent.
+Example: nook -- --continue
 
-Requires smolvm >= 1.36.1; Docker is not needed.
-Agent logins stay in an isolated profile; host agent files are never imported.
+Use --env to forward host variables and --mount to share directories.
+Run nook --help-all for syntax and all launch options.
+Run nook <command> --help for command details.
 `
 
-const advancedUsage = `
-Advanced options (not needed for normal starts):
-  --agent NAME            Override the saved agent: pi, opencode or claude
-  --profile NAME          Select or create a profile without prompting
-  --image NAME            Select a managed image for this agent
-  --select-image          Choose another built image without changing the profile
-  --images                List managed builds without launching a VM
-  --agent-version VERSION Exact version for initial automatic build; otherwise must match image
-  --cpus N                Maximum vCPUs (default: 2)
-  --mem MiB               Maximum guest memory (default: 2048)
+const launchUsage = `Usage: nook [LAUNCH_OPTIONS] [-- AGENT_ARGS...]
+       nook run [LAUNCH_OPTIONS] [-- AGENT_ARGS...]
+
+Agent, profile and image:
+  --select                 Change this folder's saved setup interactively
+  --agent NAME             Choose pi, opencode or claude
+  --profile NAME           Select or create a profile without prompting
+  --image NAME             Select a managed image for this agent
+  --select-image           Choose a built image without changing the profile
+  --agent-version VERSION  Pin the first automatic build; otherwise match the selected image
+  --images                 List managed images instead of launching (alias for nook images)
+
+Directory shares and environment:
+  --mount HOST:GUEST[:ro]   Share a directory; add :ro for read-only access
+  --clear-mounts           Clear saved extra directory shares
+  --env NAME               Forward a variable exported on the host (name only)
+  --clear-env              Clear saved environment forwards
+
+  Repeat --mount or --env to supply multiple entries. Each flag replaces
+  its saved list. Only env names are saved; values are read at each launch.
+
+Network:
+  --network ask|full       TCP approval mode (default: full)
+  --allow-private CIDR     Replace saved private-network exceptions (repeatable; full only)
+  --clear-allow-private    Clear saved private-network exceptions
+
+  Host/LAN stays blocked by default in both modes. full skips TCP approvals;
+  ask needs the Approvals tab in a separate nook watch terminal.
+
+VM resources:
+  --cpus N                 Maximum vCPUs (default: 2)
+  --mem MiB                Maximum guest memory (default: 2048)
   --storage GiB           Writable guest disk (default: 20)
-  --dry-run               Print the launch plan as JSON without changes
 
-Image management:
-  nook images
-  nook images status
-  nook images build NAME --agent NAME [OPTIONS]
-  nook images default NAME
-  nook images remove NAME
-  nook images --help
+Other options:
+  --dry-run                Print the launch plan as JSON without making changes
+  --version                Show launcher version
+  -h, --help               Show short help
+  --help-all               Show this reference
 
-Agent, profile, image, resources, mounts, env names and network mode are saved for the exact folder.
---env passes current values from the host to the agent; only names are saved.
---network ask needs the Approvals tab in a separate nook watch terminal.
-All work VMs block host/LAN, including saved folders. full skips TCP approvals only.
---allow-private CIDR replaces the saved exception list; --clear-allow-private removes it.
-Private exceptions are allowed only with full, never with ask.
-Each agent keeps its own saved selection; profiles can contain multiple agents.
-Image defaults affect new selections, not an already configured folder.
-The optional "run" subcommand and all existing launch flags remain supported.
+Examples:
+  nook --mount ../lib:/mnt/lib:ro
+  nook --env MY_VAR -- --continue
+
+Setup is saved for the exact folder; each agent keeps its own selection.
+Image defaults affect new selections, not already configured folders.
+Agent args go after --, pass through unchanged, and are not saved.
+Requires smolvm >= 1.36.1; Docker is not needed. Agent logins stay in
+isolated profiles; host agent files are not imported.
 
 Storage: ${AGENTNOOK_HOME:-~/.agentnook}/config.toml and profiles/<name>/<agent>/
-Set AGENTNOOK_NONINTERACTIVE=1 to disable prompts; first launch needs --agent and --profile.
-Interactive activity reports are automatic; unavailable reports show unknown.
-AGENTNOOK_HERDR=0 disables only forwarding to Herdr.
-Arguments after -- go to the selected agent unchanged and are not remembered.
-Old configuration formats and --pi-* flags are not supported.
+AGENTNOOK_NONINTERACTIVE=1 disables prompts; first launch needs --agent and --profile.
+AGENTNOOK_HERDR=0 disables Herdr forwarding only.
+
+See also: nook images --help, nook watch --help, nook network --help
 `
 
 type App struct {
@@ -143,7 +146,7 @@ func (a App) Run(args []string) int {
 			fmt.Fprint(a.Out, usage)
 			return 0
 		case "--help-all":
-			fmt.Fprint(a.Out, usage+advancedUsage)
+			fmt.Fprint(a.Out, launchUsage)
 			return 0
 		case "version", "--version":
 			fmt.Fprintln(a.Out, "nook", Version)
@@ -198,7 +201,7 @@ func (a App) Run(args []string) int {
 		return 2
 	}
 	if *helpAll {
-		fmt.Fprint(a.Out, usage+advancedUsage)
+		fmt.Fprint(a.Out, launchUsage)
 		return 0
 	}
 	if *version {

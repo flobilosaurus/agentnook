@@ -6,35 +6,56 @@ import (
 	"testing"
 )
 
-func TestHelpSeparatesEverydayAndAdvancedOptions(t *testing.T) {
-	for _, args := range [][]string{{"--help"}, {"run", "--help"}, {"help"}} {
-		f := setup(t)
-		t.Setenv("PATH", "")
-		f.run(t, 0, args...)
-		help := f.out.String()
-		for _, want := range []string{"First run:", "Later runs:", "--select", "--env NAME", "--help-all", "nook -- --continue"} {
-			if !strings.Contains(help, want) {
-				t.Fatalf("missing %q: %s", want, help)
+func TestShortHelpPointsToCommandHelpAndLaunchReference(t *testing.T) {
+	for _, args := range [][]string{{"--help"}, {"-h"}, {"help"}, {"run", "--help"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			f := setup(t)
+			t.Setenv("PATH", "")
+			f.run(t, 0, args...)
+			help := f.out.String()
+			for _, want := range []string{
+				"reuse the saved setup", "--select", "--env", "--mount",
+				"Commands:", "  nook images ", "  nook watch ", "  nook network ",
+				"nook <command> --help", "nook --help-all",
+				"Everything after -- is passed unchanged", "nook -- --continue",
+			} {
+				if !strings.Contains(help, want) {
+					t.Fatalf("short help missing %q:\n%s", want, help)
+				}
 			}
-		}
-		for _, hidden := range []string{"--agent NAME", "--profile NAME", "--image NAME", "--select-image", "--cpus", "nook images build"} {
-			if strings.Contains(help, hidden) {
-				t.Fatalf("everyday help exposes %q", hidden)
+			for _, hidden := range []string{"--agent NAME", "--cpus", "--mount HOST:GUEST", "--env NAME", "--clear-", "--network ask|full", "nook images build"} {
+				if strings.Contains(help, hidden) {
+					t.Fatalf("short help exposes %q:\n%s", hidden, help)
+				}
 			}
-		}
-		assertNoData(t, f)
+			assertNoData(t, f)
+		})
 	}
+}
+
+func TestFullHelpListsLaunchOptionsAndLinksToSubcommandHelp(t *testing.T) {
 	for _, args := range [][]string{{"--help-all"}, {"run", "--help-all"}} {
-		f := setup(t)
-		t.Setenv("PATH", "")
-		f.run(t, 0, args...)
-		help := f.out.String()
-		for _, want := range []string{"--agent NAME", "--profile NAME", "--image NAME", "--select-image", "--agent-version", "--cpus", "nook images build"} {
-			if !strings.Contains(help, want) {
-				t.Fatalf("advanced help missing %q", want)
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			f := setup(t)
+			t.Setenv("PATH", "")
+			f.run(t, 0, args...)
+			help := f.out.String()
+			for _, want := range []string{
+				"--select", "--agent NAME", "--profile NAME", "--image NAME", "--select-image", "--agent-version VERSION", "--images",
+				"--mount HOST:GUEST[:ro]", "--clear-mounts", "--env NAME", "--clear-env", "Only env names are saved",
+				"--network ask|full", "--allow-private CIDR", "--clear-allow-private",
+				"--cpus N", "--mem MiB", "--storage GiB", "--dry-run", "--version", "--help-all",
+				"nook images --help", "nook watch --help", "nook network --help",
+			} {
+				if !strings.Contains(help, want) {
+					t.Fatalf("launch reference missing %q:\n%s", want, help)
+				}
 			}
-		}
-		assertNoData(t, f)
+			if strings.Count(help, "Usage:") != 1 || strings.Contains(help, "nook images build") {
+				t.Fatalf("launch reference duplicates other help:\n%s", help)
+			}
+			assertNoData(t, f)
+		})
 	}
 }
 

@@ -16,21 +16,6 @@ curl -qfsS https://raw.githubusercontent.com/flobilosaurus/agentnook/main/instal
 
 Then run `nook` from your project directory.
 
-## Common commands
-
-| Command | What it does |
-| --- | --- |
-| `nook --select` | Switch agents or profiles |
-| `nook -- --continue` | Pass arguments to the agent |
-| `nook --mount ../lib:/mnt/lib:ro` | Share an additional directory read-only |
-| `nook --env GITHUB_TOKEN` | Replace the saved list of forwarded host variables |
-| `nook --clear-env` | Clear saved environment variable forwarding |
-| `nook images` | List local images |
-| `nook images status` | Inspect image contents and tool lists |
-| `nook watch` | View VMs, TCP approvals, network audit, and images in one terminal UI |
-| `nook network` | Open Watch on the Approvals tab (`--json` for scripts) |
-| `nook --help-all` | Show all options |
-
 ## Forward environment variables
 
 ```sh

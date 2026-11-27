@@ -74,7 +74,7 @@ func TestImagesStatusEmptyHelpAndInvalidArgs(t *testing.T) {
 	if !strings.Contains(f.out.String(), "No managed builds") {
 		t.Fatal(f.out.String())
 	}
-	for _, args := range [][]string{{"images", "--help"}, {"images", "status", "--help"}, {"images", "status", "-h"}, {"--help"}} {
+	for _, args := range [][]string{{"images", "--help"}, {"images", "status", "--help"}, {"images", "status", "-h"}} {
 		f.run(t, 0, args...)
 		if !strings.Contains(f.out.String(), "nook images status") {
 			t.Fatalf("missing command in help for %q: %s", args, &f.out)

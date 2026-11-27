@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nook · Hilfe-Prototyp</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --paper: #f2f4f6;
+  --ink: #18232f;
+  --muted: #495b6d;
+  --line: #c7d0d9;
+  --accent: #17675d;
+  --term: #14191f;
+  --term-ink: #e4eaf0;
+  --term-muted: #a2aebc;
+  --term-line: #34414d;
+  --term-accent: #8bddd1;
+  --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --paper: #10151a; --ink: #edf2f6; --muted: #acb9c7; --line: #34414d; --accent: #8bddd1; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 1rem/1.55 system-ui, sans-serif; }
+main { width: min(100% - 2rem, 72rem); margin: auto; padding: clamp(1.5rem, 5vw, 4rem) 0; }
+header { margin-bottom: 2rem; }
+.eyebrow { font: .75rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+h1 { margin: .25em 0; font: 500 clamp(2rem, 5vw, 3.5rem)/1.1 Georgia, serif; }
+p { margin: 0; }
+header p, .note { color: var(--muted); }
+.layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); gap: 2rem; align-items: start; }
+nav { position: sticky; top: 1.5rem; border-top: 1px solid var(--line); padding-top: .9rem; }
+nav p { margin-bottom: .4rem; }
+nav a { display: block; padding: .45rem .55rem; border-radius: .3rem; font: .8rem/1.4 var(--mono); overflow-wrap: anywhere; }
+a { color: var(--accent); text-underline-offset: .2em; }
+a:hover { text-decoration-thickness: .15em; }
+a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+section { margin-bottom: 1.75rem; scroll-margin-top: 1.5rem; }
+.terminal { border: 1px solid var(--term-line); border-radius: .75rem; background: var(--term); color: var(--term-ink); }
+section:target .terminal { outline: 2px solid var(--accent); outline-offset: 3px; }
+.terminal h2 { margin: 0; padding: .7rem 1rem; border-bottom: 1px solid var(--term-line); color: var(--term-accent); font: 600 .85rem/1.5 var(--mono); }
+.terminal h2 span { color: var(--term-muted); }
+pre { margin: 0; padding: 1rem; white-space: pre-wrap; overflow-wrap: anywhere; font: .84rem/1.65 var(--mono); }
+pre a { color: var(--term-accent); }
+code { font: inherit; }
+.note { margin: .65rem 0 0; font-size: .85rem; }
+.note code { font-family: var(--mono); }
+@media (max-width: 46rem) {
+  .layout { display: block; }
+  nav { position: static; margin-bottom: 1.5rem; }
+  nav a { display: inline-block; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">agentnook / CLI-Prototyp</p>
+    <h1>Sechs Ansichten, ein Einstieg</h1>
+    <p>Kurze Haupthilfe, vollständige Startoptionen und bestehende Unterbefehlshilfen. Links springen zur jeweiligen Ausgabe; kein Befehl wird ausgeführt.</p>
+  </header>
+  <div class="layout">
+    <nav aria-label="Hilfeansichten">
+      <p class="eyebrow">Menüs</p>
+      <a href="#help">nook --help</a>
+      <a href="#launch">nook --help-all</a>
+      <a href="#images">nook images --help</a>
+      <a href="#images-status">nook images status --help</a>
+      <a href="#watch">nook watch --help</a>
+      <a href="#network">nook network --help</a>
+    </nav>
+    <div>
+      <section id="help" aria-labelledby="help-title">
+        <div class="terminal" lang="en">
+          <h2 id="help-title"><span aria-hidden="true">$ </span>nook --help</h2>
+          <pre><code>Usage: nook [LAUNCH_OPTIONS] [-- AGENT_ARGS...]
+       nook &lt;command&gt; [args...]
+
+Start an agent in a local VM. First run sets up this folder;
+next runs reuse the saved setup. Use --select to change it.
+
+Commands:
+  <a href="#images">nook images</a>   List and manage agent images
+  <a href="#watch">nook watch</a>    Monitor VMs, network activity and images
+  <a href="#network">nook network</a>  Review outbound approvals and audit history
+
+Everything after -- is passed unchanged to your agent.
+Example: nook -- --continue
+
+Use --env to forward host variables and --mount to share directories.
+Run <a href="#launch">nook --help-all</a> for syntax and all launch options.
+Run nook &lt;command&gt; --help for command details.</code></pre>
+        </div>
+        <p class="note"><code>nook help</code>, <code>nook -h</code> und <code>nook run --help</code> zeigen dieselbe Kurzhilfe.</p>
+      </section>
+
+      <section id="launch" aria-labelledby="launch-title">
+        <div class="terminal" lang="en">
+          <h2 id="launch-title"><span aria-hidden="true">$ </span>nook --help-all</h2>
+          <pre><code>Usage: nook [LAUNCH_OPTIONS] [-- AGENT_ARGS...]
+       nook run [LAUNCH_OPTIONS] [-- AGENT_ARGS...]
+
+Agent, profile and image:
+  --select                 Change this folder's saved setup interactively
+  --agent NAME             Choose pi, opencode or claude
+  --profile NAME           Select or create a profile without prompting
+  --image NAME             Select a managed image for this agent
+  --select-image           Choose a built image without changing the profile
+  --agent-version VERSION  Pin the first automatic build; otherwise match the selected image
+  --images                 List managed images instead of launching (alias for nook images)
+
+Directory shares and environment:
+  --mount HOST:GUEST[:ro]   Share a directory; add :ro for read-only access
+  --clear-mounts           Clear saved extra directory shares
+  --env NAME               Forward a variable exported on the host (name only)
+  --clear-env              Clear saved environment forwards
+
+  Repeat --mount or --env to supply multiple entries. Each flag replaces
+  its saved list. Only env names are saved; values are read at each launch.
+
+Network:
+  --network ask|full       TCP approval mode (default: full)
+  --allow-private CIDR     Replace saved private-network exceptions (repeatable; full only)
+  --clear-allow-private    Clear saved private-network exceptions
+
+  Host/LAN stays blocked by default in both modes. full skips TCP approvals;
+  ask needs the Approvals tab in a separate <a href="#watch">nook watch</a> terminal.
+
+VM resources:
+  --cpus N                 Maximum vCPUs (default: 2)
+  --mem MiB                Maximum guest memory (default: 2048)
+  --storage GiB           Writable guest disk (default: 20)
+
+Other options:
+  --dry-run                Print the launch plan as JSON without making changes
+  --version                Show launcher version
+  -h, --help               Show <a href="#help">short help</a>
+  --help-all               Show this reference
+
+Examples:
+  nook --mount ../lib:/mnt/lib:ro
+  nook --env MY_VAR -- --continue
+
+Setup is saved for the exact folder; each agent keeps its own selection.
+Image defaults affect new selections, not already configured folders.
+Agent args go after --, pass through unchanged, and are not saved.
+Requires smolvm &gt;= 1.36.1; Docker is not needed. Agent logins stay in
+isolated profiles; host agent files are not imported.
+
+Storage: ${AGENTNOOK_HOME:-~/.agentnook}/config.toml and profiles/&lt;name&gt;/&lt;agent&gt;/
+AGENTNOOK_NONINTERACTIVE=1 disables prompts; first launch needs --agent and --profile.
+AGENTNOOK_HERDR=0 disables Herdr forwarding only.
+
+See also: <a href="#images">nook images --help</a>, <a href="#watch">nook watch --help</a>, <a href="#network">nook network --help</a></code></pre>
+        </div>
+        <p class="note"><code>nook run --help-all</code> zeigt dieselbe Startreferenz.</p>
+      </section>
+
+      <section id="images" aria-labelledby="images-title">
+        <div class="terminal" lang="en">
+          <h2 id="images-title"><span aria-hidden="true">$ </span>nook images --help</h2>
+          <pre><code>Usage:
+  nook images                       List managed builds and launch presets
+  <a href="#images-status">nook images status</a>                Inspect image composition and project assignments
+  nook images build NAME [OPTIONS]  Build an agent image and save a local .smolmachine artifact
+  nook images default NAME          Set default image for its agent type
+  nook images remove NAME           Delete an unused managed artifact and catalog entry
+
+Build options:
+  --agent NAME             pi, opencode or claude (required)
+  --agent-version VERSION  Exact version (default: latest stable)
+  --base-image IMAGE       Debian-based Node image (default: node:24-bookworm)
+  --cpus N                 CPU launch preset (default: configured resources)
+  --mem MiB                RAM launch preset
+  --storage GiB            Disk launch preset
+  --mise-config PATH       Read [tools] from a mise TOML file (strings or arrays of strings)
+  --tool TOOL[@VERSION]    Install with mise into the image (repeatable; appended after file tools)
+  --set-default            Use successful build as default for this agent
+
+Builds and launches require smolvm &gt;= 1.36.1; Docker is not needed.
+Native Linux architecture only. Build VMs receive no project/profile mounts.
+Build names are immutable; use a new name for each rebuild.
+Remove refuses images used by any agent default or saved project/agent selection.
+Profiles and smolvm caches stay untouched.</code></pre>
+        </div>
+        <p class="note"><code>nook images help</code>, <code>nook images build --help</code> und <code>nook images remove --help</code> zeigen dieselbe Ausgabe. <code>default</code> hat keine eigene Hilfe.</p>
+      </section>
+
+      <section id="images-status" aria-labelledby="status-title">
+        <div class="terminal" lang="en">
+          <h2 id="status-title"><span aria-hidden="true">$ </span>nook images status --help</h2>
+          <pre><code>Usage:
+  nook images status   Show managed images, configured tools and saved project paths
+
+Shows configured environment variable names in saved project selections (no values).
+Reads the local catalog without starting a VM or changing configuration.
+Opens the Images tab in <a href="#watch">nook watch</a> with terminal input and output; otherwise prints text.
+Keys: up/down or j/k select a row, Enter toggles an image branch,
+      Left returns from a path to its image, PgUp/PgDn scroll details,
+      ? toggles the footer legend, q exits.</code></pre>
+        </div>
+      </section>
+
+      <section id="watch" aria-labelledby="watch-title">
+        <div class="terminal" lang="en">
+          <h2 id="watch-title"><span aria-hidden="true">$ </span>nook watch --help</h2>
+          <pre><code>Usage: nook watch
+
+Monitor all projects in the current AGENTNOOK_HOME. Other data homes stay excluded.
+
+1 VMs        One list grouped by profile; only VM rows are selectable, skipping profile headings.
+             Rows show project, network mode and mount count. On wide terminals,
+             details sit beside the list; on narrow terminals they sit below.
+             Shows agent activity, runtime uptime and heartbeat when available.
+             Missing or stale agent telemetry remains unknown; VM status stays separate.
+             PgUp/PgDn scroll details; Enter opens Audit for the selected VM.
+2 Approvals  Pending TCP requests and recent decisions. Select a request before
+             a (allow once), s (allow exact IP/port for this VM run), or d (deny).
+             Unanswered requests are denied after 12 seconds.
+3 Audit      Read-only history, including ended VMs. PgUp/PgDn page older/newer;
+             f toggles running only; x clears a VM filter.
+4 Images     Managed images, tools and saved project assignments. r refreshes.
+
+Keys: 1–4, Tab/Shift+Tab or [/] switch tabs; up/down or j/k select rows.
+      q, Esc or Ctrl+C exit watch only.
+Requires terminal input and output. Approvals and Audit need at least 48×27.
+Audit and Images remain available without smolvm. Watch never starts or stops a VM.</code></pre>
+        </div>
+      </section>
+
+      <section id="network" aria-labelledby="network-title">
+        <div class="terminal" lang="en">
+          <h2 id="network-title"><span aria-hidden="true">$ </span>nook network --help</h2>
+          <pre><code>Usage: nook network [--machine NAME]
+       nook network --json [--machine NAME] [--before BYTE_CURSOR] [--limit N]
+
+Show persistent per-VM outbound network history, including ended machines, in this AGENTNOOK_HOME.
+Opens the Approvals tab in <a href="#watch">nook watch</a>. It needs at least 48 columns and 27 rows;
+JSON has no size requirement. Approvals groups requests and recent decisions by
+profile and VM. Press 3 for the read-only Audit tab.
+History includes ended VMs by default; f toggles running VMs only.
+--machine opens Audit filtered to the named VM; x clears the filter.
+History keys: up/down or j/k select events; PgUp older; PgDn newer; Home latest.
+Every recorded event shows ALLOWED or DENIED and its policy reason.
+ALLOWED means policy permission, NOT a successful connection or HTTP response.
+ask records engine decisions (TCP/DNS/UDP/ICMP when reported).
+full records DENIALS ONLY: smolvm does not expose its allowed traffic.
+No retrospective history before this feature. No automatic history deletion.
+JSON works without a terminal, runtime or running VM; pages have at most 200 events.
+Use page.machine and page.next_before with --machine and --before for older events.
+
+Approve pending TCP connections for nook --network ask sessions in this AGENTNOOK_HOME.
+Run in a separate terminal; the agent keeps its own terminal input.
+Requires smolvm &gt;= 1.36.1 for protected VM launches, not for this view.
+Profile and VM headings are always visible within the list, not selectable.
+Up/down or j/k selects requests or events. Expiry never retargets a selection.
+Approval keys work only on an explicitly selected pending request.
+Keys: a allow once, s allow exact destination IP/port for this VM launch, d deny.
+      q, Esc or Ctrl+C close only the view, not the VMs or brokers.
+Unanswered requests are denied after 12 seconds (smolvm's limit is 15 seconds).
+Retry the guest connection after a timeout. No headless automatic approvals.
+Session grants expire when the VM ends and never span VM launches or profiles.
+HTTP Host and TLS SNI names are guest-supplied hints, not verified identities or grant keys.
+This approves TCP connections, NOT individual HTTP requests, URLs or payloads.
+Host/LAN and cloud metadata are blocked before approval; private exceptions require full.
+DNS remains host-managed and is not interactively mediated; other UDP/ICMP is denied.
+smolvm-internal services are exempt; its own target protection still applies.
+A permitted connection can carry many requests or tunnel data to its allowed endpoint.
+No TLS interception or data-loss-prevention guarantee. Session grants cover any host at that IP/port.
+The owner-only registry stores control tokens, never agent credentials or guest payloads.</code></pre>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+</body>
+</html>
