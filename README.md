@@ -4,120 +4,123 @@
 
 # agentnook
 
-Eine eigene Ecke für deinen Coding-Agenten. `nook` startet **Pi**, **OpenCode v2** oder **Claude Code** in einer kurzlebigen [smolvm](https://github.com/smol-machines/smolvm)-VM. Logins, Einstellungen, Skills und Erweiterungen bleiben erhalten.
+A nook of its own for your coding agent. `nook` runs **Pi**, **OpenCode v2**, or **Claude Code** in a short-lived [smolvm](https://github.com/smol-machines/smolvm) VM. Logins, settings, skills, and extensions persist after the VM exits.
 
-## Schnellstart
+## Quick start
 
-Voraussetzungen: macOS mit Apple Silicon oder Linux mit KVM; **smolvm ≥ 1.36.1** im `PATH`.
+Requirements: macOS on Apple Silicon or Linux with KVM, and **smolvm ≥ 1.36.1** on your `PATH`.
 
 ```sh
 curl -qfsS https://raw.githubusercontent.com/flobilosaurus/agentnook/main/install.sh | sh
 ```
 
-Danach `nook` im Projektordner starten.
+Then run `nook` from your project directory.
 
-## Wichtige Befehle
+## Common commands
 
-| Befehl | Zweck |
+| Command | What it does |
 | --- | --- |
-| `nook --select` | Agent oder Profil wechseln |
-| `nook -- --continue` | Argumente an den Agenten weitergeben |
-| `nook --mount ../lib:/mnt/lib:ro` | Zusätzlichen Ordner schreibgeschützt freigeben |
-| `nook --env GITHUB_TOKEN` | Gespeicherte Liste freigegebener Host-Variablen ersetzen |
-| `nook --clear-env` | Gespeicherte Variablenfreigaben entfernen |
-| `nook images` | Lokale Images anzeigen |
-| `nook images status` | Aufbau der Images und Toollisten anzeigen |
-| `nook watch` | VMs, TCP-Freigaben, Netzwerk-Audit und Images in einer TUI |
-| `nook network` | Watch direkt im Tab Approvals öffnen (`--json` für Skripte) |
-| `nook --help-all` | Alle Optionen anzeigen |
+| `nook --select` | Switch agents or profiles |
+| `nook -- --continue` | Pass arguments to the agent |
+| `nook --mount ../lib:/mnt/lib:ro` | Share an additional directory read-only |
+| `nook --env GITHUB_TOKEN` | Replace the saved list of forwarded host variables |
+| `nook --clear-env` | Clear saved environment variable forwarding |
+| `nook images` | List local images |
+| `nook images status` | Inspect image contents and tool lists |
+| `nook watch` | View VMs, TCP approvals, network audit, and images in one terminal UI |
+| `nook network` | Open Watch on the Approvals tab (`--json` for scripts) |
+| `nook --help-all` | Show all options |
 
-## Umgebungsvariablen freigeben
+## Forward environment variables
 
 ```sh
 nook --env GITHUB_TOKEN --env OPENAI_API_KEY
 ```
 
-`--env` ersetzt die bisherige Liste für diesen Projektordner und Agenten. `config.toml` speichert nur Namen, keine Werte. Ein späterer Start mit `nook` verwendet die Liste erneut und liest die aktuellen Werte vom Host. `nook --clear-env` entfernt die Freigaben für künftige Starts.
+`--env` replaces the saved list for this project directory and agent. `config.toml` stores names only, never values. On later launches, `nook` reuses the list and reads current values from the host. `nook --clear-env` clears the list for future launches.
 
-Die Variablen müssen auf dem Host exportiert sein. Fehlende Variablen führen zum Abbruch. `--env` akzeptiert keine `NAME=WERT`-Zuweisungen. `--dry-run` zeigt nur Namen und ändert nichts an der Konfiguration.
+Export the variables on the host before launching. If a variable is missing, launch fails. `--env` does not accept `NAME=VALUE` assignments. `--dry-run` shows names only and does not change configuration.
 
-**Nur bewusst freigeben:** Der Agent und seine Kindprozesse können die Werte bei jedem Start lesen und weitergeben.
+**Forward only what you intend to share:** The agent and its child processes can read and pass on these values on every launch.
 
-## Images und Tools
+## Images and tools
 
-`nook images build` installiert zusätzliche Tools mit [mise](https://mise.jdx.dev/) fest ins Image.
+`nook images build` uses [mise](https://mise.jdx.dev/) to install extra tools into the image.
 
-**`--tool NAME@VERSION`** gibt ein Tool direkt an. Wiederhole das Flag für weitere Tools:
+**`--tool NAME@VERSION`** specifies a tool directly. Repeat the flag to add more tools:
 
 ```sh
 nook images build pi-dev --agent pi --tool rg@14.1.1 --tool fd@10.3.0
 ```
 
-**`--mise-config PFAD`** übernimmt `[tools]` aus einer mise-TOML-Datei, ohne Tasks oder Hooks auszuführen:
+**`--mise-config PATH`** reads the `[tools]` section of a mise TOML file without running tasks or hooks:
 
 ```sh
 nook images build pi-dev --agent pi --mise-config ./mise.toml
 ```
 
-Beide Flags lassen sich kombinieren.
+You can combine both flags. See built images and their tools in the [Images tab](#4-images).
 
-`nook images status` zeigt Images, Tools und gespeicherte Projektzuordnungen, ohne eine VM zu starten. Die Details einer Projektzuordnung zeigen die konfigurierten Variablennamen, nie Werte.
+## Customize agent settings, skills, and extensions
 
-![Image-Status mit ausgewähltem Pi-Image, mise-Tools und aufgeklappter Projektzuordnung](docs/screenshots/images-status.png)
+A **profile**, such as `work` or `private`, stores logins, settings, skills, and extensions separately for each agent. This data survives VM shutdown and is shared across projects that use the same profile and agent.
 
-## Einstellungen / Skills / Erweiterungen des Agenten bearbeiten
+On the host, agent data lives at `~/.agentnook/profiles/<profile>/<agent>/`. If `AGENTNOOK_HOME` is set, `profiles/` lives there instead. Inside the VM, the agent's directory is its home directory (`~`).
 
-Ein **Profil** wie `arbeit` oder `privat` speichert Logins, Einstellungen, Skills und Erweiterungen pro Agent. Die Daten bleiben nach VM-Ende erhalten und werden in allen Projekten mit demselben Profil und Agenten wiederverwendet.
+**Settings and skills:** If you change settings or add a skill in a Pi VM using the `work` profile, other Pi sessions with `work` use the same files. In running sessions, `/reload` picks up changes; new Pi sessions read them automatically. Some settings, such as the default thinking level, apply only at startup. Other profiles are unaffected.
 
-Auf dem Host: `~/.agentnook/profiles/<profil>/<agent>/`. Ist `AGENTNOOK_HOME` gesetzt, liegt `profiles/` dort. In der VM ist der jeweilige Agentenordner das Home-Verzeichnis (`~`).
-
-**Einstellungen und Skills:** Änderst du in einer Pi-VM Einstellungen oder fügst einen Skill im Profil `arbeit` hinzu, nutzen andere Pi-Sessions mit `arbeit` dieselben Dateien. In bereits laufenden Sessions lädt `/reload` die Änderungen ein; neue Pi-Starts lesen sie automatisch. Manche Einstellungen, etwa der Standard-Denkmodus, greifen erst beim Start. Andere Profile bleiben unverändert.
-
-| Agent | Einstellungsdatei in der VM | Skill-Ordner in der VM |
+| Agent | Settings file in the VM | Skills directory in the VM |
 | --- | --- | --- |
 | Pi | `~/.pi/agent/settings.json` | `~/.pi/agent/skills/` |
 | OpenCode v2 | `~/.config/opencode/opencode.json` | `~/.config/opencode/skills/` |
 | Claude Code | `~/.claude/settings.json` | `~/.claude/skills/` |
 
-**Erweiterungen installieren:** Platzhalter durch Paket- oder Plugin-Namen ersetzen:
+**Install extensions:** Replace the placeholders with package or plugin names:
 
 ```sh
-nook --agent pi --profile arbeit -- install npm:PAKETNAME </dev/null
-nook --agent opencode --profile arbeit -- plugin add PAKETNAME
-nook --agent claude --profile arbeit -- plugin install PLUGIN@MARKETPLACE --scope user
+nook --agent pi --profile work -- install npm:PACKAGE </dev/null
+nook --agent opencode --profile work -- plugin add PACKAGE
+nook --agent claude --profile work -- plugin install PLUGIN@MARKETPLACE --scope user
 ```
 
-Lokale Erweiterungen gehören bei Pi nach `~/.pi/agent/extensions/`, bei OpenCode nach `~/.config/opencode/plugins/` (VM-Pfade). Danach Agent neu starten.
+Inside the VM, put local Pi extensions in `~/.pi/agent/extensions/` and OpenCode plugins in `~/.config/opencode/plugins/`. Then restart the agent.
 
-## Einblicke ins Terminal
+## `nook watch`
 
-### `nook watch`
+Open `nook watch` in a separate terminal. Watch covers all projects in the current `AGENTNOOK_HOME` without starting or stopping VMs. At 80 columns or wider, the list and details appear side by side.
 
-`nook watch` vereint vier Tabs im aktuellen `AGENTNOOK_HOME`. Wechsel mit `1`–`4`, `Tab` oder `Shift+Tab`. Ab 80 Spalten stehen Listen und Details nebeneinander.
+- `1`–`4`, `Tab`, or `Shift+Tab`: switch tabs.
+- `↑`/`↓` or `j`/`k`: select an entry.
+- `q`: close Watch. Running VMs stay active.
 
-| Tab | Inhalt |
-| --- | --- |
-| `1 VMs` | Laufende Agenten-VMs aller Projekte, gruppiert nach Profil. Details zeigen beim Start freigegebene Variablennamen, nie Werte. `Enter` öffnet das Audit der gewählten VM. |
-| `2 Approvals` | Offene TCP-Anfragen in `ask` und jüngste Entscheidungen. Anfrage auswählen, dann `a` einmal erlauben, `s` für diesen VM-Lauf erlauben oder `d` ablehnen. |
-| `3 Audit` | Schreibgeschützte Netzwerkhistorie inklusive beendeter VMs. `PgUp`/`PgDn` blättert, `f` filtert laufende VMs, `x` löscht einen VM-Filter. |
-| `4 Images` | Image-Status, Tools und gespeicherte Projektzuordnungen. `r` aktualisiert. |
+### 1 VMs
 
-Watch startet oder stoppt keine VM. `nook network` und interaktives `nook images status` öffnen die passenden Watch-Tabs.
+Running agent VMs, grouped by profile. Details show VM status and agent activity separately, along with launch limits, mounts, and the names of variables forwarded at launch, never their values. Press `Enter` to open the audit for the selected VM.
 
-![Watch-Ansicht mit laufenden Pi-, OpenCode- und Claude-Code-VMs in den Profilen private und work](docs/screenshots/watch.png)
+![Watch VMs tab: four sample VMs in two profiles, with the VM list on the left and details on the right](docs/screenshots/watch.png)
 
-### Herdr
+### 2 Approvals
 
-Startest du `nook` interaktiv in einem [Herdr](https://herdr.dev/)-Pane, meldet es den Status von Pi, OpenCode v2 oder Claude Code automatisch an dieses Pane. So siehst du in Herdr, welcher Agent arbeitet (`working`), bereit ist (`idle`) oder auf deine Eingabe wartet (`blocked`), ohne zum jeweiligen Tab wechseln zu müssen.
+Pending TCP requests in `--network ask` mode and recent decisions. Select a request and press `a` to allow it once, `s` to allow that exact destination IP and port for the current VM run, or `d` to deny it. Unanswered requests are denied after 12 seconds. `nook network` opens this tab directly.
 
-Herdr kann aus Statuswechseln in Hintergrund-Tabs Benachrichtigungen erzeugen: **Braucht Aufmerksamkeit** beim Wechsel zu `blocked`, **Fertig** beim Wechsel von `working` oder `blocked` zu `idle`.
+![Watch Approvals tab: two pending TCP requests and details for the selected request](docs/screenshots/network.png)
 
-### `nook network`
+### 3 Audit
 
-Im Tab **Approvals** entscheidest du im Modus `--network ask`, welche ausgehenden TCP-Verbindungen der Agent aufbauen darf. Öffne Watch dafür in einem separaten Terminal. Unbeantwortete Anfragen werden nach 12 Sekunden abgelehnt. Der Tab **Audit** zeigt gespeicherte Entscheidungen auch nach Ende der VM: erlaubte und blockierte Zugriffe in `ask`, nur blockierte in `full`.
+Read-only network history, including VMs that have stopped. `ask` records both allowed and blocked decisions; `full` records only blocked ones. Use `PgUp`/`PgDn` to page through history, `f` to toggle between all VMs and running VMs only, and `x` to clear a single-VM filter.
 
-![Network-Ansicht mit zwei offenen TCP-Anfragen und den letzten Netzwerkentscheidungen](docs/screenshots/network.png)
+`nook network --machine NAME` opens the audit for that VM. `nook network --json` outputs the data without opening the TUI.
 
-`nook network --json` gibt die Daten weiterhin ohne TUI aus. Die Screenshots zeigen frühere Einzelansichten.
+![Watch Audit tab: allowed and blocked decisions for running and stopped VMs](docs/screenshots/network-history.png)
 
-![Audit mit erlaubten und blockierten Zugriffen laufender und beendeter VMs](docs/screenshots/network-history.png)
+### 4 Images
+
+Managed images, installed tools, and saved project assignments. Assignment details show configured environment variable names, never values. Press `Enter` to expand or collapse an image's assignments and `r` to refresh. `nook images status` opens this tab in a terminal and prints plain text otherwise.
+
+![Watch Images tab: a Pi image with mise tools and expanded project assignments](docs/screenshots/images-status.png)
+
+## Herdr
+
+When you run `nook` interactively in a [Herdr](https://herdr.dev/) pane, it reports the status of Pi, OpenCode v2, or Claude Code to that pane. You can see which agent is working (`working`), ready (`idle`), or waiting for input (`blocked`) without switching tabs.
+
+Herdr can notify you when an agent in a background tab needs attention (changes to `blocked`) or finishes (changes from `working` or `blocked` to `idle`).
