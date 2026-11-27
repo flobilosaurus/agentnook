@@ -2,8 +2,10 @@ package e2e
 
 import (
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWatchHelpAndNonterminalNeverLaunchOrWrite(t *testing.T) {
@@ -12,7 +14,7 @@ func TestWatchHelpAndNonterminalNeverLaunchOrWrite(t *testing.T) {
 	if code != 0 || stderr != "" || !strings.Contains(out, "Usage: nook watch\n") || strings.Contains(out, "--all") || !strings.Contains(out, "current AGENTNOOK_HOME") || !strings.Contains(out, "agent activity, runtime uptime and heartbeat") || !strings.Contains(out, "Missing or stale agent telemetry remains unknown") {
 		t.Fatalf("help: %d %q %q", code, out, stderr)
 	}
-	for _, value := range []string{"One list grouped by profile", "Only VM rows are selectable", "network mode and mount count", "Details for the selected VM appear below", "skipping profile headings", "read-only"} {
+	for _, value := range []string{"One list grouped by profile", "only VM rows are selectable", "network mode and mount count", "details sit beside the list", "skipping profile headings", "Read-only", "1 VMs", "2 Approvals", "3 Audit", "4 Images"} {
 		if !strings.Contains(out, value) {
 			t.Fatalf("missing watch help %q: %s", value, out)
 		}
@@ -31,5 +33,41 @@ func TestWatchHelpAndNonterminalNeverLaunchOrWrite(t *testing.T) {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("watch created storage or ran smolvm: %s %v", path, err)
 		}
+	}
+}
+
+func TestWatchTerminalTabsWithoutRuntime(t *testing.T) {
+	s := newSandbox(t)
+	path := t.TempDir()
+	start := func(args ...string) *testTerminal {
+		cmd := exec.Command(launcher, args...)
+		cmd.Dir = s.project
+		cmd.Env = []string{"HOME=" + s.home, "AGENTNOOK_HOME=" + s.data, "PATH=" + path}
+		return startTestTerminal(t, cmd)
+	}
+	const timeout = 8 * time.Second
+	view := start("watch")
+	view.expect(t, timeout, `1 VMs +2 Approvals +3 Audit +4 Images`)
+	view.expect(t, timeout, `━{9}─`)
+	view.expect(t, timeout, `Discovery unavailable`)
+	view.send(t, "2")
+	view.expect(t, timeout, `─{10}━{15}─`)
+	view.expect(t, timeout, `No pending connections`)
+	view.send(t, "3")
+	view.expect(t, timeout, `Audit · read-only`)
+	view.expect(t, timeout, `No recorded events`)
+	view.send(t, "4")
+	view.expect(t, timeout, `─{38}━{12}─`)
+	view.expect(t, timeout, `No managed builds`)
+	view.send(t, "q")
+	view.wait(t)
+
+	view = start("images", "status")
+	view.expect(t, timeout, `─{38}━{12}─`)
+	view.expect(t, timeout, `No managed builds`)
+	view.send(t, "q")
+	view.wait(t)
+	if _, err := os.Stat(s.data); !os.IsNotExist(err) {
+		t.Fatalf("watch changed data home: %v", err)
 	}
 }

@@ -15,11 +15,11 @@ const networkUsage = `Usage: nook network [--machine NAME]
        nook network --json [--machine NAME] [--before BYTE_CURSOR] [--limit N]
 
 Show persistent per-VM outbound network history, including ended machines, in this AGENTNOOK_HOME.
-The terminal view needs at least 48 columns and 22 rows; JSON has no size requirement.
-The overview shows pending requests and recent decisions together. Both are
-    grouped by profile and VM. h (or Tab) opens full, read-only history.
+Opens the Approvals tab in nook watch. It needs at least 48 columns and 27 rows;
+JSON has no size requirement. Approvals groups requests and recent decisions by
+profile and VM. Press 3 for the read-only Audit tab.
 History includes ended VMs by default; f toggles running VMs only.
---machine opens read-only history for the named VM.
+--machine opens Audit filtered to the named VM; x clears the filter.
 History keys: up/down or j/k select events; PgUp older; PgDn newer; Home latest.
 Every recorded event shows ALLOWED or DENIED and its policy reason.
 ALLOWED means policy permission, NOT a successful connection or HTTP response.
@@ -101,7 +101,11 @@ func (a App) networkCommand(args []string) int {
 	if a.Network != nil {
 		err = a.Network(p.Root, load, egress.Decide)
 	} else {
-		err = tui.WatchNetwork(p.Root, initial, egress.Decide, a.In, a.Out)
+		start := tui.WatchApprovals
+		if *machine != "" {
+			start = tui.WatchAudit
+		}
+		err = a.runWatch(p, start, initial)
 	}
 	if err != nil {
 		return a.fail(1, fmt.Errorf("network: %w", err))

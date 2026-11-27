@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"time"
@@ -17,14 +16,6 @@ import (
 
 type FleetLoader func(context.Context) (fleet.Snapshot, error)
 
-// WatchFleet is display-only. Cancellation stops discovery, not any VM.
-func WatchFleet(scope string, load FleetLoader, in io.Reader, out io.Writer) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	_, err := tea.NewProgram(newFleetModel(ctx, scope, load), tea.WithInput(in), tea.WithOutput(out), tea.WithAltScreen()).Run()
-	return err
-}
-
 type fleetRefreshMsg struct{}
 type fleetResultMsg struct {
 	snapshot fleet.Snapshot
@@ -34,7 +25,6 @@ type fleetResultMsg struct {
 
 type fleetModel struct {
 	ctx           context.Context
-	scope         string
 	load          FleetLoader
 	snapshot      fleet.Snapshot
 	cursor        int
@@ -45,8 +35,8 @@ type fleetModel struct {
 	loaded        bool
 }
 
-func newFleetModel(ctx context.Context, scope string, load FleetLoader) fleetModel {
-	return fleetModel{ctx: ctx, scope: scope, load: load, cursor: -1, width: 88, height: 32, details: viewport.New(88, 12)}
+func newFleetModel(ctx context.Context, load FleetLoader) fleetModel {
+	return fleetModel{ctx: ctx, load: load, cursor: -1, width: 88, height: 32, details: viewport.New(88, 12)}
 }
 
 func (m fleetModel) fetch() tea.Msg {
@@ -157,7 +147,7 @@ func (m fleetModel) activity(vm *fleet.Instance) (state, uptime string) {
 }
 
 func (m fleetModel) heading() []string {
-	lines := []string{monitorTitle.Render("nook watch"), monitorMuted.Render(monitorText(m.scope))}
+	var lines []string
 	switch {
 	case m.errText != "" && m.loaded:
 		lines = append(lines, monitorWarning.Render("STALE · last update "+m.lastSuccess.Local().Format("15:04:05")+" · "+monitorText(m.errText)))
@@ -187,7 +177,7 @@ func (m fleetModel) heading() []string {
 	return lines
 }
 
-func (m fleetModel) list(head int) []string {
+func (m fleetModel) list(width, rowsAvailable int) []string {
 	rows := make([]monitorRow, 0, len(m.snapshot.Instances))
 	for i := range m.snapshot.Instances {
 		vm := &m.snapshot.Instances[i]
@@ -196,20 +186,30 @@ func (m fleetModel) list(head int) []string {
 		if vm.State != "running" {
 			status = monitorKnown(vm.State)
 		}
-		labelWidth := m.width - 6 - min(ansi.StringWidth(status), m.width/3)
+		labelWidth := width - 6 - min(ansi.StringWidth(status), width/3)
 		rows = append(rows, monitorRow{profile: vm.Profile, label: monitorMachine(watchProject(*vm), vm.Name, vm.Agent, labelWidth),
 			secondary: fmt.Sprintf("Network: %s · %d mounts", monitorKnown(vm.Network), len(vm.Mounts)),
 			status:    status, warning: status != state || state == "unknown" || state == "blocked"})
 	}
-	// The details share the screen with the list but can scroll independently.
-	return monitorList(rows, m.cursor, m.width, max(3, (m.height-head-3)/2))
+	return monitorList(rows, m.cursor, width, rowsAvailable)
+}
+
+func (m fleetModel) listBudget(body, left int) int {
+	if left < m.width {
+		return max(3, body)
+	}
+	return max(3, body/2)
 }
 
 func (m *fleetModel) refreshDetails() {
 	vm := m.instance()
-	m.details.Width = m.width
-	list := m.list(len(m.heading()))
-	m.details.Height = max(1, m.height-len(m.heading())-len(list)-3)
+	left, right := watchColumns(m.width)
+	body := m.height - len(m.heading()) - 2 // One heading per pane and a shared footer.
+	m.details.Width = right
+	m.details.Height = max(1, body)
+	if left == m.width {
+		m.details.Height = max(1, body-1-len(m.list(left, m.listBudget(body, left))))
+	}
 	if vm == nil {
 		m.details.SetContent("")
 		return
@@ -217,7 +217,7 @@ func (m *fleetModel) refreshDetails() {
 	state, uptime := m.activity(vm)
 	var lines []string
 	add := func(label, value string) {
-		lines = append(lines, ansi.Hardwrap(monitorMuted.Render(label)+"  "+value, m.width, true))
+		lines = append(lines, ansi.Hardwrap(monitorMuted.Render(label)+"  "+value, m.details.Width, true))
 	}
 	add("Agent", monitorKnown(vm.Agent)+" / "+monitorKnown(vm.Profile))
 	add("VM / activity", monitorKnown(vm.State)+" / "+state)
@@ -240,7 +240,7 @@ func (m *fleetModel) refreshDetails() {
 		add("", fmt.Sprintf("%s → %s [%s]", monitorText(mount.Host), monitorText(mount.Guest), mode))
 	}
 	if state == "unknown" {
-		lines = append(lines, ansi.Hardwrap("No fresh agent telemetry. VM state is reported separately.", m.width, true))
+		lines = append(lines, ansi.Hardwrap("No fresh agent telemetry. VM state is reported separately.", m.details.Width, true))
 	}
 	add("VM ID", monitorKnown(vm.Name))
 	add("Project", monitorKnown(watchProject(*vm)))
@@ -281,17 +281,20 @@ func (m fleetModel) View() string {
 	}
 	lines := m.heading()
 	if vm := m.instance(); vm != nil {
-		lines = append(lines, monitorMuted.Render("Instances"))
-		lines = append(lines, m.list(len(lines)-1)...)
-		caption := monitorMachine(watchProject(*vm), vm.Name, "", m.width)
-		if m.details.TotalLineCount() > m.details.Height {
-			caption += " · PgUp/PgDn details"
+		left, right := watchColumns(m.width)
+		body := m.height - len(lines) - 2
+		list := append([]string{monitorMuted.Render("Instances")}, m.list(left, m.listBudget(body, left))...)
+		caption := monitorMachine(watchProject(*vm), vm.Name, "", right)
+		details := append([]string{monitorTitle.Render(caption)}, strings.Split(m.details.View(), "\n")...)
+		if left < m.width {
+			lines = append(lines, monitorColumns(list, details, left, right, body+1)...)
+		} else {
+			lines = append(lines, list...)
+			lines = append(lines, details...)
 		}
-		lines = append(lines, monitorTitle.Render(caption))
-		lines = append(lines, strings.Split(m.details.View(), "\n")...)
 	} else if m.loaded {
 		lines = append(lines, "No running agentnook instances in this scope.")
 	}
-	lines = append(lines, monitorMuted.Render("↑↓/jk select VM · PgUp/PgDn details · q quit"))
+	lines = append(lines, monitorMuted.Render("↑↓/jk select · Enter VM audit · PgUp/PgDn details"))
 	return monitorView(lines, m.width)
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manage a private/work Pi test layout in the calling Herdr tab (Python 3.11+)."""
+"""Manage four Pi VMs and one Watch pane in the calling Herdr tab (Python 3.11+)."""
 
 import argparse
 import fcntl
@@ -17,7 +17,8 @@ import time
 import tomllib
 import uuid
 
-ROLES = ("private-1", "private-2", "work-1", "work-2", "watch", "network")
+VM_ROLES = ("private-1", "private-2", "work-1", "work-2")
+ROLES = (*VM_ROLES, "watch")
 SCRIPT = Path(__file__).resolve()
 
 
@@ -82,8 +83,8 @@ def worker_argv(directory, role):
 
 
 def command(state, role):
-    if role in ("watch", "network"):
-        return [state["nook"], role]
+    if role == "watch":
+        return [state["nook"], "watch"]
     return [state["nook"], "--agent", "pi", "--profile", role.rsplit("-", 1)[0],
             "--network", state["network"], "--clear-allow-private",
             "--cpus", "2", "--mem", "2048"]
@@ -219,7 +220,7 @@ def up(args, home, root, state_file):
     # nook refuses to mount a project that overlaps its host data directory.
     project_root = (home.parent / (home.name + "-testing-projects")).resolve()
     projects = {}
-    for role in ROLES[:4]:
+    for role in VM_ROLES:
         project = (project_root / role).resolve()
         if project.is_relative_to(home) or home.is_relative_to(project):
             raise RuntimeError(f"Test project and AGENTNOOK_HOME must not overlap: {project} and {home}")
@@ -232,10 +233,9 @@ def up(args, home, root, state_file):
     save(state_file, state)
     save(directory / "session.json", state)
     try:
-        # Original control pane remains above the six-pane test region.
+        # Keep the control pane above a 2×2 VM grid with Watch on the right.
         private1 = split(state, directory, state_file, state["origin"], "down", "private-1", 0.8)
-        watch = split(state, directory, state_file, private1, "right", "watch")
-        split(state, directory, state_file, watch, "right", "network")
+        split(state, directory, state_file, private1, "right", "watch")
         work1 = split(state, directory, state_file, private1, "down", "work-1")
         split(state, directory, state_file, private1, "right", "private-2")
         split(state, directory, state_file, work1, "right", "work-2")

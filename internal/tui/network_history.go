@@ -50,12 +50,9 @@ func (m networkModel) eventList(history []networkLeaf, index, budget int) []stri
 }
 
 func (m networkModel) networkHeading() []string {
-	title := "nook network"
+	var lines []string
 	if m.archive {
-		title = "Network History · read only"
-	}
-	lines := []string{monitorTitle.Render(title), monitorMuted.Render("AGENTNOOK_HOME: " + monitorText(m.root))}
-	if m.archive {
+		lines = append(lines, monitorTitle.Render("Audit · read-only"))
 		filter := "All VMs · f running only"
 		if m.machine != "" {
 			filter = monitorText(m.machine)
@@ -136,7 +133,7 @@ func (m networkModel) eventDetails(record egress.HistoryRecord) []string {
 	if vm.Coverage == "denials-only" {
 		lines = append(lines, "Network: full · only denials are recorded")
 	} else if event.Decision == "allowed" {
-		lines = append(lines, "Allowed by policy, not proof of connection success.")
+		lines = append(lines, "Allowed by policy; connection may still fail.")
 	}
 	if vm.Warning != "" {
 		lines = append(lines, monitorWarning.Render("Audit warning: "+monitorText(vm.Warning)))
@@ -148,16 +145,16 @@ func (m networkModel) networkFooter(requestSelected bool) []string {
 	var hints []string
 	if m.archive {
 		hints = append(hints, "PgUp older · PgDn newer · Home latest")
-		if m.machine == "" {
-			hints = append(hints, "↑↓/jk select · h pending + recent · q quit")
+		if m.machine != "" {
+			hints = append(hints, "↑↓/jk select · x show all VMs")
 		} else {
-			hints = append(hints, "↑↓/jk select · q quit")
+			hints = append(hints, "↑↓/jk select · f toggle running only")
 		}
 	} else {
 		if requestSelected {
 			hints = append(hints, "a allow once · s allow for VM run · d deny")
 		}
-		hints = append(hints, "* Unverified name · 12s timeout denies TCP", "↑↓/jk select · h full history · q quit")
+		hints = append(hints, "* Unverified name · 12s timeout denies TCP", "↑↓/jk select request or recent decision")
 	}
 	for i := range hints {
 		hints[i] = monitorMuted.Render(ansi.Truncate(hints[i], m.width, "…"))

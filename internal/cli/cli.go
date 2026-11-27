@@ -45,7 +45,8 @@ Options:
   --network ask|full      Save TCP approval mode (default: full); Host/LAN stays blocked
   --allow-private CIDR    Replace saved private-network exceptions (repeatable; full only)
   --clear-allow-private   Remove saved private-network exceptions
-  network                 Show persistent network history and live approvals
+  watch                   Open VMs, Approvals, Audit and Images in one terminal UI
+  network                 Open the Approvals tab (use --json for scripting)
   --help-all              Show advanced agent, image and resource options
   -h, --help              Show help
   --version               Show launcher version
@@ -53,7 +54,7 @@ Options:
 Examples:
   nook                    Set up once, then start with the saved choices
   nook -- --continue      Pass arguments to your saved agent
-  nook watch              Watch all projects in this AGENTNOOK_HOME
+  nook watch              Monitor VMs, network and images in this AGENTNOOK_HOME
   nook images status      Show image composition and configured tools without a VM
 
 Requires smolvm >= 1.36.1; Docker is not needed.
@@ -83,7 +84,7 @@ Image management:
 
 Agent, profile, image, resources, mounts, env names and network mode are saved for the exact folder.
 --env passes current values from the host to the agent; only names are saved.
---network ask needs a separate nook network terminal.
+--network ask needs the Approvals tab in a separate nook watch terminal.
 All work VMs block host/LAN, including saved folders. full skips TCP approvals only.
 --allow-private CIDR replaces the saved exception list; --clear-allow-private removes it.
 Private exceptions are allowed only with full, never with ask.
@@ -109,7 +110,7 @@ type App struct {
 	Runner        func(string, []string, vm.IO) int
 	Interactive   func() bool
 	LatestVersion func(string) (string, error)
-	Watch         func(string, tui.FleetLoader) error
+	Watch         func(tui.WatchOptions) error
 	Network       func(string, tui.NetworkLoader, tui.NetworkDecider) error
 }
 
@@ -568,7 +569,7 @@ func (a App) Run(args []string) int {
 		defer broker.Close()
 		streams.Mediation = &vm.Mediation{Address: broker.Address(), Token: broker.Token()}
 		historyInfo.Session = broker.Session()
-		fmt.Fprintln(a.Err, "Network: ask — run nook network in another terminal with the same AGENTNOOK_HOME to approve connections; unanswered TCP connections are denied after 12s.")
+		fmt.Fprintln(a.Err, "Network: ask — open Approvals in nook watch in another terminal with the same AGENTNOOK_HOME; unanswered TCP connections are denied after 12s.")
 	}
 	mode := selected.Network
 	if mode == "" {

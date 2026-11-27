@@ -20,12 +20,12 @@ func TestWatchReadOnlyAndIndependentOfDirectory(t *testing.T) {
 	}
 	t.Chdir(f.root) // No project configuration is required in the caller's folder.
 	called := 0
-	f.app.Watch = func(scope string, load tui.FleetLoader) error {
+	f.app.Watch = func(options tui.WatchOptions) error {
 		called++
-		if scope != "All projects · AGENTNOOK_HOME: "+f.data {
-			t.Fatal("not global", scope)
+		if options.Root != f.data || options.Start != tui.WatchVMs {
+			t.Fatal("not global", options.Root, options.Start)
 		}
-		data, err := load(context.Background())
+		data, err := options.LoadFleet(context.Background())
 		if err != nil || len(data.Instances) != 0 {
 			t.Fatalf("%+v %v", data, err)
 		}
@@ -41,7 +41,7 @@ func TestWatchReadOnlyAndIndependentOfDirectory(t *testing.T) {
 func TestWatchHelpArgumentsAndTerminal(t *testing.T) {
 	f := setup(t)
 	calls := 0
-	f.app.Watch = func(string, tui.FleetLoader) error { calls++; return nil }
+	f.app.Watch = func(tui.WatchOptions) error { calls++; return nil }
 	for _, args := range [][]string{{"watch", "--cpus", "2"}, {"watch", "extra"}, {"watch", "--"}, {"watch", "--help", "extra"}, {"watch", "--all"}, {"watch", "--all", "--help"}, {"watch", "-h", "--all"}} {
 		f.run(t, 2, args...)
 	}
@@ -58,7 +58,10 @@ func TestWatchHelpArgumentsAndTerminal(t *testing.T) {
 		}
 	}
 	f.app.Interactive = func() bool { return true }
-	f.run(t, 127, "watch")
+	f.run(t, 0, "watch")
+	if calls != 1 {
+		t.Fatal("watch must open even without smolvm")
+	}
 	assertNoData(t, f)
 }
 
@@ -88,12 +91,12 @@ func TestWatchAllProjectsReadOnly(t *testing.T) {
 	for _, cwd := range []string{f.project, f.root} {
 		t.Chdir(cwd)
 		called := false
-		f.app.Watch = func(scope string, load tui.FleetLoader) error {
+		f.app.Watch = func(options tui.WatchOptions) error {
 			called = true
-			if !strings.Contains(scope, "All projects") || !strings.Contains(scope, f.data) {
-				t.Fatal("global scope missing data home", scope)
+			if options.Root != f.data {
+				t.Fatal("global scope missing data home", options.Root)
 			}
-			snapshot, err := load(context.Background())
+			snapshot, err := options.LoadFleet(context.Background())
 			if err != nil || len(snapshot.Instances) != 2 {
 				t.Fatalf("cwd=%s: %+v %v", cwd, snapshot, err)
 			}
@@ -114,7 +117,7 @@ func TestWatchAllProjectsReadOnly(t *testing.T) {
 
 func TestWatchUIFailure(t *testing.T) {
 	f := setup(t)
-	f.app.Watch = func(string, tui.FleetLoader) error { return errors.New("terminal failed") }
+	f.app.Watch = func(tui.WatchOptions) error { return errors.New("terminal failed") }
 	f.run(t, 1, "watch")
 	if !strings.Contains(f.errOut.String(), "watch: terminal failed") {
 		t.Fatal(f.errOut.String())

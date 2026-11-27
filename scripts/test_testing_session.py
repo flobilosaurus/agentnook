@@ -88,16 +88,21 @@ class SessionTest(unittest.TestCase):
     def test_up_down_and_layout(self):
         state = self.start()
         splits = [c for c in self.calls if c[0] == "split"]
-        self.assertEqual(len(splits), 6)
+        expected = {"private-1", "private-2", "work-1", "work-2", "watch"}
+        self.assertEqual(set(state["panes"]), expected)
+        self.assertEqual(set(state["launched"]), expected)
+        self.assertEqual(len(splits), 5)
         self.assertIn("--no-focus", splits[0])
         self.assertEqual(splits[0][2:5], ("w1:p1", "--direction", "down"))
-        self.assertEqual(len(self.panes), 6)
+        self.assertEqual(splits[1][2:5], (state["panes"]["private-1"], "--direction", "right"))
+        self.assertEqual(len(self.panes), 5)
         self.assertEqual(len(set(state["projects"].values())), 4)
         for path in map(Path, state["projects"].values()):
             self.assertEqual(path.parent, self.home.parent / ".agentnook-testing-projects")
             self.assertFalse(path.is_relative_to(self.home))
             self.assertFalse(self.home.is_relative_to(path))
-        for role in session.ROLES[:4]:
+        self.assertEqual(session.command(state, "watch"), [state["nook"], "watch"])
+        for role in session.VM_ROLES:
             cmd = session.command(state, role)
             self.assertIn(role.rsplit("-", 1)[0], cmd)
             self.assertIn("--clear-allow-private", cmd)
@@ -117,9 +122,14 @@ class SessionTest(unittest.TestCase):
             state = json.loads(self.active.read_text())
             self.assertEqual(state["app_home"], str(self.home))
             self.assertEqual(state["origin"], "origin")
-            self.assertEqual(set(state["panes"]), set(session.ROLES))
-            self.assertEqual(self.calls[1][1]["pane"], "origin")
-            self.assertEqual(self.calls[1][1]["direction"], "down")
+            self.assertEqual(set(state["panes"]), {"private-1", "private-2", "work-1", "work-2", "watch"})
+            splits = [args for action, args in self.calls if action == "pane.split"]
+            self.assertEqual(len(splits), 5)
+            self.assertEqual(splits[0]["pane"], "origin")
+            self.assertEqual(splits[0]["direction"], "down")
+            self.assertEqual(splits[1]["pane"], state["panes"]["private-1"])
+            self.assertEqual(splits[1]["direction"], "right")
+            self.assertEqual(splits[1]["argv"][-1], "watch")
             # A pane already removed from the window must not be closed again.
             self.panes.remove(state["panes"]["watch"])
             session.down(state, Path(state["directory"]), self.active, 10)

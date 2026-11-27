@@ -39,7 +39,7 @@ func fleetSnapshot() fleet.Snapshot {
 func loadedFleet(t *testing.T) fleetModel {
 	t.Helper()
 	load := func(context.Context) (fleet.Snapshot, error) { return fleetSnapshot(), nil }
-	m := newFleetModel(context.Background(), "All projects · AGENTNOOK_HOME: /data", load)
+	m := newFleetModel(context.Background(), load)
 	m, _ = fleetUpdate(m, tea.WindowSizeMsg{Width: 100, Height: 40})
 	m, cmd := fleetUpdate(m, m.Init()())
 	if cmd == nil {
@@ -51,7 +51,7 @@ func loadedFleet(t *testing.T) fleetModel {
 func TestWatchListAndDetails(t *testing.T) {
 	m := loadedFleet(t)
 	view := ansi.Strip(m.View())
-	for _, value := range []string{"nook watch", "All projects", "3 VMs · 2 projects", "Profile private", "Profile work", "repo · VM run-a", "Network: ask · 3 mounts", "Launch limits  2 vCPU", "Network mode  ask", "Forwarded environment  API_TOKEN, DEBUG", "/docs → /mnt/docs [ro]"} {
+	for _, value := range []string{"3 VMs · 2 projects", "Profile private", "Profile work", "repo · VM run-a", "Network: ask · 3 mounts", "Launch limits  2 vCPU", "Network mode  ask", "Forwarded environment  API_TOKEN, DEBUG", "/docs → /mnt/docs [ro]"} {
 		if !strings.Contains(view, value) {
 			t.Errorf("missing %q in\n%s", value, view)
 		}
@@ -112,7 +112,7 @@ func TestWatchErrorsAndTelemetry(t *testing.T) {
 	if strings.Contains(m.View(), "STALE") || m.errText != "" {
 		t.Fatal(m.View())
 	}
-	m = newFleetModel(context.Background(), "/repo", nil)
+	m = newFleetModel(context.Background(), nil)
 	m, _ = fleetUpdate(m, fleetResultMsg{err: errors.New("first poll failed")})
 	if !strings.Contains(m.View(), "Discovery unavailable") || strings.Contains(m.View(), "No running") {
 		t.Fatal(m.View())
@@ -168,7 +168,8 @@ func TestWatchFleetCancelsInFlightDiscovery(t *testing.T) {
 	}
 	var out bytes.Buffer
 	done := make(chan error, 1)
-	go func() { done <- WatchFleet("/repo", load, in, &out) }()
+	options := WatchOptions{Root: t.TempDir(), LoadFleet: load}
+	go func() { done <- Watch(options, in, &out) }()
 	select {
 	case <-started:
 	case err := <-done:

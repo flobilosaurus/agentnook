@@ -36,7 +36,7 @@ func networkLive(m networkModel, entries ...egress.Entry) networkModel {
 func TestNetworkSelectionCannotRetargetToAnotherRequest(t *testing.T) {
 	var got egress.Entry
 	var choice string
-	m := newNetworkModel("/data", egress.HistoryQuery{}, func(entry egress.Entry, value string) error {
+	m := newNetworkModel(false, egress.HistoryQuery{}, func(entry egress.Entry, value string) error {
 		got, choice = entry, value
 		return nil
 	})
@@ -70,7 +70,7 @@ func TestNetworkSelectionCannotRetargetToAnotherRequest(t *testing.T) {
 func TestNetworkApprovalGuardsAndErrors(t *testing.T) {
 	for _, key := range []string{"a", "s", "d"} {
 		t.Run(key, func(t *testing.T) {
-			m := newNetworkModel("/data", egress.HistoryQuery{}, func(egress.Entry, string) error { return errors.New("broker stopped") })
+			m := newNetworkModel(false, egress.HistoryQuery{}, func(egress.Entry, string) error { return errors.New("broker stopped") })
 			entry := networkEntry("a", "[abcd:abcd:abcd:abcd:abcd:abcd:abcd:abcd]:65535")
 			entry.Info.Project = "/code/" + strings.Repeat("project", 12)
 			m = networkLive(m, entry)
@@ -110,7 +110,7 @@ func TestNetworkApprovalGuardsAndErrors(t *testing.T) {
 }
 
 func TestNetworkApprovalGroupingAndVisibleSelection(t *testing.T) {
-	m := newNetworkModel("/data", egress.HistoryQuery{}, nil)
+	m := newNetworkModel(false, egress.HistoryQuery{}, nil)
 	var requests []egress.Entry
 	for i := range 15 {
 		e := networkEntry(fmt.Sprint(i), fmt.Sprintf("203.0.113.%d:80", i+1))
@@ -129,7 +129,7 @@ func TestNetworkApprovalGroupingAndVisibleSelection(t *testing.T) {
 		assertTerminalBounds(t, view, m.width, m.height)
 		if m.width >= networkMinWidth {
 			plain := ansi.Strip(view)
-			for _, value := range []string{"Profile profile-14", "agentnook · VM identified", "▸ ", "TCP destination: 203.0.113.15:80", "HTTP Host (unverified): github.com"} {
+			for _, value := range []string{"Profile profile-14", "VM identified", "▸ ", "TCP destination: 203.0.113.15:80", "HTTP Host (unverified): github.com"} {
 				if !strings.Contains(plain, value) {
 					t.Fatal("missing", value, plain)
 				}
@@ -142,7 +142,7 @@ func TestNetworkApprovalGroupingAndVisibleSelection(t *testing.T) {
 }
 
 func TestNetworkPendingIsIndependentOfHistoryFailure(t *testing.T) {
-	m := newNetworkModel("/data", egress.HistoryQuery{}, func(egress.Entry, string) error { return nil })
+	m := newNetworkModel(false, egress.HistoryQuery{}, func(egress.Entry, string) error { return nil })
 	m, _ = networkUpdate(m, networkHistoryLoaded{err: errors.New("unreadable archive")})
 	m = networkLive(m, networkEntry("a", "203.0.113.1:80"))
 	m, _ = networkKey(m, "j")

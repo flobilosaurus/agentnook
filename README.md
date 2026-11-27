@@ -27,8 +27,8 @@ Danach `nook` im Projektordner starten.
 | `nook --clear-env` | Gespeicherte Variablenfreigaben entfernen |
 | `nook images` | Lokale Images anzeigen |
 | `nook images status` | Aufbau der Images und Toollisten anzeigen |
-| `nook watch` | Laufende VMs projektübergreifend anzeigen |
-| `nook network` | Netzwerkhistorie und offene TCP-Freigaben anzeigen |
+| `nook watch` | VMs, TCP-Freigaben, Netzwerk-Audit und Images in einer TUI |
+| `nook network` | Watch direkt im Tab Approvals öffnen (`--json` für Skripte) |
 | `nook --help-all` | Alle Optionen anzeigen |
 
 ## Umgebungsvariablen freigeben
@@ -93,7 +93,16 @@ Lokale Erweiterungen gehören bei Pi nach `~/.pi/agent/extensions/`, bei OpenCod
 
 ### `nook watch`
 
-`nook watch` zeigt laufende Agenten-VMs über alle Projekte hinweg, gruppiert nach Profil. Die VM-Details zeigen die beim Start freigegebenen Variablennamen, nicht die aktuelle Konfiguration oder Werte. Für ältere Starts ohne diese Metadaten steht dort `unknown`.
+`nook watch` vereint vier Tabs im aktuellen `AGENTNOOK_HOME`. Wechsel mit `1`–`4`, `Tab` oder `Shift+Tab`. Ab 80 Spalten stehen Listen und Details nebeneinander.
+
+| Tab | Inhalt |
+| --- | --- |
+| `1 VMs` | Laufende Agenten-VMs aller Projekte, gruppiert nach Profil. Details zeigen beim Start freigegebene Variablennamen, nie Werte. `Enter` öffnet das Audit der gewählten VM. |
+| `2 Approvals` | Offene TCP-Anfragen in `ask` und jüngste Entscheidungen. Anfrage auswählen, dann `a` einmal erlauben, `s` für diesen VM-Lauf erlauben oder `d` ablehnen. |
+| `3 Audit` | Schreibgeschützte Netzwerkhistorie inklusive beendeter VMs. `PgUp`/`PgDn` blättert, `f` filtert laufende VMs, `x` löscht einen VM-Filter. |
+| `4 Images` | Image-Status, Tools und gespeicherte Projektzuordnungen. `r` aktualisiert. |
+
+Watch startet oder stoppt keine VM. `nook network` und interaktives `nook images status` öffnen die passenden Watch-Tabs.
 
 ![Watch-Ansicht mit laufenden Pi-, OpenCode- und Claude-Code-VMs in den Profilen private und work](docs/screenshots/watch.png)
 
@@ -105,10 +114,10 @@ Herdr kann aus Statuswechseln in Hintergrund-Tabs Benachrichtigungen erzeugen: *
 
 ### `nook network`
 
-Mit `nook network` entscheidest du im Modus `--network ask`, welche ausgehenden TCP-Verbindungen der Agent aufbauen darf. Im Audit siehst du gespeicherte Netzwerkentscheidungen auch nach Ende der VM: erlaubte und blockierte Zugriffe in `ask`, nur blockierte in `full`.
+Im Tab **Approvals** entscheidest du im Modus `--network ask`, welche ausgehenden TCP-Verbindungen der Agent aufbauen darf. Öffne Watch dafür in einem separaten Terminal. Unbeantwortete Anfragen werden nach 12 Sekunden abgelehnt. Der Tab **Audit** zeigt gespeicherte Entscheidungen auch nach Ende der VM: erlaubte und blockierte Zugriffe in `ask`, nur blockierte in `full`.
 
 ![Network-Ansicht mit zwei offenen TCP-Anfragen und den letzten Netzwerkentscheidungen](docs/screenshots/network.png)
 
-Im Audit siehst du gespeicherte Netzwerkentscheidungen auch nach Ende der VM: erlaubte und blockierte Zugriffe in ask, nur blockierte in full.
+`nook network --json` gibt die Daten weiterhin ohne TUI aus. Die Screenshots zeigen frühere Einzelansichten.
 
 ![Audit mit erlaubten und blockierten Zugriffen laufender und beendeter VMs](docs/screenshots/network-history.png)

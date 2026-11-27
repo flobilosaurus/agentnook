@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/flobilosaurus/agentnook/internal/config"
+	"github.com/flobilosaurus/agentnook/internal/egress"
 	"github.com/flobilosaurus/agentnook/internal/images"
 	"github.com/flobilosaurus/agentnook/internal/paths"
 	"github.com/flobilosaurus/agentnook/internal/tui"
@@ -14,7 +15,7 @@ const imagesStatusUsage = `Usage:
 
 Shows configured environment variable names in saved project selections (no values).
 Reads the local catalog without starting a VM or changing configuration.
-Terminal input and output enable the interactive view; otherwise prints text.
+Opens the Images tab in nook watch with terminal input and output; otherwise prints text.
 Keys: up/down or j/k select a row, Enter toggles an image branch,
       Left returns from a path to its image, PgUp/PgDn scroll details,
       ? toggles the footer legend, q exits.
@@ -32,18 +33,25 @@ func (a App) imagesStatusCommand(args []string) int {
 	if err != nil {
 		return a.fail(1, err)
 	}
-	c, err := config.Load(p.ConfigFile())
-	if err != nil {
-		return a.fail(1, fmt.Errorf("config: %w", err))
-	}
-	status := images.DescribeStatus(c, p.ConfigFile(), currentProjectPath(), a.Agents)
 	if a.Interactive() {
-		err = tui.ShowConfigStatus(status, a.In, a.Out)
+		err = a.runWatch(p, tui.WatchImages, egress.HistoryQuery{})
 	} else {
-		err = status.WriteText(a.Out)
+		var status images.CatalogStatus
+		status, err = a.loadImageStatus(p, currentProjectPath())
+		if err == nil {
+			err = status.WriteText(a.Out)
+		}
 	}
 	if err != nil {
 		return a.fail(1, fmt.Errorf("images status: %w", err))
 	}
 	return 0
+}
+
+func (a App) loadImageStatus(p paths.Paths, project string) (images.CatalogStatus, error) {
+	c, err := config.Load(p.ConfigFile())
+	if err != nil {
+		return images.CatalogStatus{}, fmt.Errorf("config: %w", err)
+	}
+	return images.DescribeStatus(c, p.ConfigFile(), project, a.Agents), nil
 }

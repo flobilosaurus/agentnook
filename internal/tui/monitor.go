@@ -71,6 +71,36 @@ func monitorView(lines []string, width int) string {
 	return strings.Join(lines, "\n")
 }
 
+const monitorColumnGap = " │ "
+
+// Keep enough room for the full TCP destination in the details column,
+// including bracketed IPv6 addresses. Stack panes in narrower terminals.
+func watchColumns(width int) (left, right int) {
+	if width < 80 {
+		return width, width
+	}
+	available := width - ansi.StringWidth(monitorColumnGap)
+	left = min(available/2, available-48)
+	return left, available - left
+}
+
+func monitorColumns(left, right []string, leftWidth, rightWidth, height int) []string {
+	rows := min(height, max(len(left), len(right)))
+	lines := make([]string, 0, rows)
+	divider := monitorMuted.Render(monitorColumnGap)
+	for i := 0; i < rows; i++ {
+		l, r := "", ""
+		if i < len(left) {
+			l = ansi.Truncate(left[i], leftWidth, "…")
+		}
+		if i < len(right) {
+			r = ansi.Truncate(right[i], rightWidth, "…")
+		}
+		lines = append(lines, l+strings.Repeat(" ", leftWidth-ansi.StringWidth(l))+divider+r)
+	}
+	return lines
+}
+
 func monitorRowCost(previous *monitorRow, item monitorRow) int {
 	cost := 1
 	if item.secondary != "" {

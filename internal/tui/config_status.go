@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"io"
 	"path/filepath"
 	"strings"
 
@@ -12,12 +11,6 @@ import (
 
 	"github.com/flobilosaurus/agentnook/internal/images"
 )
-
-// ShowConfigStatus displays a read-only catalog snapshot in an alternate screen.
-func ShowConfigStatus(status images.CatalogStatus, in io.Reader, out io.Writer) error {
-	_, err := tea.NewProgram(newConfigStatusModel(status), tea.WithInput(in), tea.WithOutput(out), tea.WithAltScreen()).Run()
-	return err
-}
 
 type configStatusModel struct {
 	status        images.CatalogStatus
@@ -153,8 +146,6 @@ func (m configStatusModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-const configColumnGap = " │ "
-
 type configStatusLayout struct {
 	listWidth, listRows, detailWidth, detailRows int
 	split                                        bool
@@ -162,11 +153,10 @@ type configStatusLayout struct {
 
 func (m configStatusModel) layout() configStatusLayout {
 	body := m.height - m.headerRows() - len(m.footer())
-	if m.width >= 76 {
-		left := min(36, max(24, m.width/3))
+	if left, right := watchColumns(m.width); left < m.width {
 		return configStatusLayout{
 			listWidth: left, listRows: max(1, (body-1)/2), split: true,
-			detailWidth: m.width - left - ansi.StringWidth(configColumnGap), detailRows: max(1, body-1),
+			detailWidth: right, detailRows: max(1, body-1),
 		}
 	}
 	rows := min(len(m.rows), max(2, (body-2)/4))
@@ -351,14 +341,7 @@ func (m configStatusModel) View() string {
 	details := []string{monitorTitle.Render(ansi.Truncate(monitorText(title), layout.detailWidth, "…"))}
 	details = append(details, strings.Split(m.details.View(), "\n")...)
 	if layout.split {
-		divider := monitorMuted.Render(configColumnGap)
-		for i, right := range details {
-			left := ""
-			if i < len(list) {
-				left = list[i]
-			}
-			lines = append(lines, left+strings.Repeat(" ", max(0, layout.listWidth-ansi.StringWidth(left)))+divider+right)
-		}
+		lines = append(lines, monitorColumns(list, details, layout.listWidth, layout.detailWidth, layout.detailRows+1)...)
 	} else {
 		lines = append(lines, list...)
 		lines = append(lines, details...)

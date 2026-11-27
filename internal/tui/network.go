@@ -1,8 +1,7 @@
 package tui
 
 import (
-	"context"
-	"io"
+	"fmt"
 	"maps"
 	"strings"
 	"time"
@@ -11,7 +10,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/flobilosaurus/agentnook/internal/egress"
-	"github.com/flobilosaurus/agentnook/internal/fleet"
 )
 
 // NetworkLoader is the CLI's injectable survey reader. The interactive view
@@ -19,22 +17,11 @@ import (
 type NetworkLoader func(...egress.HistoryQuery) (egress.Survey, error)
 type NetworkDecider func(egress.Entry, string) error
 
-func WatchNetwork(root string, initial egress.HistoryQuery, decide NetworkDecider, in io.Reader, out io.Writer) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	m := newNetworkModel(root, initial, decide)
-	m.loadLive = func() (egress.Survey, error) { return egress.Load(root) }
-	m.loadHistory = func(q egress.TimelineQuery) (egress.Timeline, error) { return egress.ReadTimeline(ctx, root, q) }
-	m.checkRuntime = func() tea.Msg {
-		running, err := fleet.RunningMachineNames(ctx)
-		return networkRuntimeLoaded{running: running, err: err}
-	}
-	_, err := tea.NewProgram(m, tea.WithInput(in), tea.WithOutput(out), tea.WithAltScreen()).Run()
-	return err
-}
-
 type networkLiveTick struct{}
-type networkHistoryTick uint64
+type networkHistoryTick struct {
+	archive    bool
+	generation uint64
+}
 type networkRuntimeTick struct{}
 type networkRuntimeLoaded struct {
 	running map[string]bool
@@ -45,6 +32,7 @@ type networkLiveLoaded struct {
 	err    error
 }
 type networkHistoryLoaded struct {
+	archive    bool
 	generation uint64
 	timeline   egress.Timeline
 	err        error
@@ -73,7 +61,6 @@ type timelinePosition struct {
 }
 
 type networkModel struct {
-	root          string
 	loadLive      func() (egress.Survey, error)
 	loadHistory   func(egress.TimelineQuery) (egress.Timeline, error)
 	checkRuntime  tea.Cmd
@@ -100,9 +87,9 @@ type networkModel struct {
 	generation  uint64 // Discard async pages from before a mode/filter/page change.
 }
 
-func newNetworkModel(root string, initial egress.HistoryQuery, decide NetworkDecider) networkModel {
-	return networkModel{root: root, width: 90, height: 26, decide: decide,
-		archive: initial.Machine != "", machine: initial.Machine, position: timelinePosition{before: initial.Before}}
+func newNetworkModel(archive bool, initial egress.HistoryQuery, decide NetworkDecider) networkModel {
+	return networkModel{width: 90, height: 26, decide: decide,
+		archive: archive, machine: initial.Machine, position: timelinePosition{before: initial.Before}}
 }
 
 func (m networkModel) livePoll() tea.Cmd {
@@ -135,10 +122,10 @@ func (m networkModel) historyPoll() tea.Cmd {
 	if m.loadHistory == nil {
 		return nil
 	}
-	q, generation := m.historyQuery(), m.generation
+	q, generation, archive := m.historyQuery(), m.generation, m.archive
 	return func() tea.Msg {
 		timeline, err := m.loadHistory(q)
-		return networkHistoryLoaded{generation, timeline, err}
+		return networkHistoryLoaded{archive, generation, timeline, err}
 	}
 }
 
@@ -187,7 +174,7 @@ func (m networkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case networkLiveTick:
 		return m, m.livePoll()
 	case networkHistoryTick:
-		if uint64(msg) == m.generation {
+		if msg.generation == m.generation {
 			return m, m.historyPoll()
 		}
 	case networkRuntimeTick:
@@ -228,7 +215,7 @@ func (m networkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selected = history[0].id
 			}
 		}
-		return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return networkHistoryTick(msg.generation) })
+		return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return networkHistoryTick{msg.archive, msg.generation} })
 	case networkDecided:
 		m.busy = false
 		if msg.err != nil {
@@ -247,12 +234,6 @@ const networkMinWidth, networkMinHeight = 48, 22
 func (m networkModel) key(key string) (tea.Model, tea.Cmd) {
 	if key == "q" || key == "esc" || key == "ctrl+c" {
 		return m, tea.Quit
-	}
-	if (key == "h" || key == "tab" || key == "shift+tab") && m.machine == "" {
-		m.archive = !m.archive
-		m.position, m.newer = timelinePosition{}, nil
-		cmd := m.reloadHistory()
-		return m, cmd
 	}
 	if m.width < networkMinWidth || m.height < networkMinHeight {
 		return m, nil
@@ -278,7 +259,7 @@ func (m networkModel) key(key string) (tea.Model, tea.Cmd) {
 	}
 	switch key {
 	case "a", "s", "d":
-		if m.busy || m.selected.request == "" {
+		if m.busy || m.selected.request == "" || m.decide == nil {
 			return m, nil
 		}
 		for _, entry := range m.requests {
@@ -290,7 +271,8 @@ func (m networkModel) key(key string) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			target := entry.Request.Target
-			if target == "" || monitorText(target) != target || ansi.StringWidth(target) > m.width {
+			_, detailWidth := watchColumns(m.width)
+			if target == "" || monitorText(target) != target || ansi.StringWidth(target) > detailWidth {
 				return m, nil // An exact, printable destination must fit on screen.
 			}
 			choice := map[string]string{"a": "once", "s": "session", "d": "deny"}[key]
@@ -326,15 +308,35 @@ func (m networkModel) selectKey(key string) networkModel {
 
 func (m networkModel) View() string {
 	if m.width < networkMinWidth || m.height < networkMinHeight {
-		lines := strings.Split(ansi.Hardwrap("Network needs at least 48×22. Resize or q to quit; --json works at any size.", m.width, true), "\n")
+		message := fmt.Sprintf("Approvals and Audit need a terminal of at least %d×%d. Resize or switch tabs.", networkMinWidth, networkMinHeight+watchChromeRows)
+		lines := strings.Split(ansi.Hardwrap(message, m.width, true), "\n")
 		return strings.Join(lines[:min(len(lines), m.height)], "\n")
 	}
-	pending, history := m.leaves()
+	left, right := watchColumns(m.width)
+	listModel, detailModel := m, m
+	listModel.width, detailModel.width = left, right
+	pending, history := listModel.leaves()
 	pi, hi := m.current(pending), m.current(history)
 	lines := m.networkHeading()
-	details := m.networkDetails(pending, history, pi, hi)
+	details := detailModel.networkDetails(pending, history, pi, hi)
 	footer := m.networkFooter(pi >= 0)
-	budget := m.height - len(lines) - len(details) - len(footer)
+	budget := m.height - len(lines) - len(footer)
+	if left < m.width {
+		list := listModel.viewList(pending, history, pi, hi, budget)
+		var wrapped []string
+		for _, line := range details {
+			wrapped = append(wrapped, strings.Split(ansi.Wrap(line, right, "/"), "\n")...)
+		}
+		lines = append(lines, monitorColumns(list, wrapped, left, right, budget)...)
+	} else {
+		lines = append(lines, m.viewList(pending, history, pi, hi, budget-len(details))...)
+		lines = append(lines, details...)
+	}
+	return monitorView(append(lines, footer...), m.width)
+}
+
+func (m networkModel) viewList(pending, history []networkLeaf, pi, hi, budget int) []string {
+	var lines []string
 	if m.archive {
 		lines = append(lines, monitorMuted.Render("Recorded decisions"))
 		lines = append(lines, m.eventList(history, hi, budget-1)...)
@@ -362,9 +364,7 @@ func (m networkModel) View() string {
 		lines = append(lines, monitorMuted.Render("Recent decisions"))
 		lines = append(lines, m.eventList(history, hi, available-len(requestLines))...)
 	}
-	lines = append(lines, details...)
-	lines = append(lines, footer...)
-	return monitorView(lines, m.width)
+	return lines
 }
 
 func leafRows(leaves []networkLeaf) []monitorRow {
