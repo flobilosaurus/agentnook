@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/charmbracelet/x/term"
 
@@ -38,6 +40,8 @@ Options:
   --select                Change this folder's saved setup
   --mount HOST:GUEST[:ro]  Add directory shares; repeat to replace the saved list
   --clear-mounts          Remove saved extra directory shares
+  --env NAME              Forward exported host variables; repeat to replace the saved list
+  --clear-env             Remove saved environment variable forwards
   --network ask|full      Save TCP approval mode (default: full); Host/LAN stays blocked
   --allow-private CIDR    Replace saved private-network exceptions (repeatable; full only)
   --clear-allow-private   Remove saved private-network exceptions
@@ -77,7 +81,8 @@ Image management:
   nook images remove NAME
   nook images --help
 
-Agent, profile, image, resources, mounts and network mode are saved for the exact folder.
+Agent, profile, image, resources, mounts, env names and network mode are saved for the exact folder.
+--env passes current values from the host to the agent; only names are saved.
 --network ask needs a separate nook network terminal.
 All work VMs block host/LAN, including saved folders. full skips TCP approvals only.
 --allow-private CIDR replaces the saved exception list; --clear-allow-private removes it.
@@ -169,6 +174,9 @@ func (a App) Run(args []string) int {
 	var mountValues []string
 	fs.Func("mount", "extra HOST:GUEST[:ro]", func(s string) error { mountValues = append(mountValues, s); return nil })
 	clearMounts := fs.Bool("clear-mounts", false, "remove saved mounts")
+	var envNames []string
+	fs.Func("env", "exported host variable name", func(s string) error { envNames = append(envNames, s); return nil })
+	clearEnv := fs.Bool("clear-env", false, "remove saved environment variable forwards")
 	network := fs.String("network", "", "TCP approval mode: ask or full")
 	var privateValues []string
 	fs.Func("allow-private", "private CIDR exception (full only)", func(s string) error { privateValues = append(privateValues, s); return nil })
@@ -218,6 +226,13 @@ func (a App) Run(args []string) int {
 	}
 	if *clearPrivate && set["allow-private"] {
 		return a.fail(2, errors.New("--allow-private and --clear-allow-private cannot be combined"))
+	}
+	if *clearEnv && set["env"] {
+		return a.fail(2, errors.New("--env and --clear-env cannot be combined"))
+	}
+	envNames, err := checkedEnvNames(envNames)
+	if err != nil {
+		return a.fail(2, err)
 	}
 	privateCIDRs, err := config.NormalizePrivateCIDRs(privateValues)
 	if err != nil {
@@ -290,6 +305,18 @@ func (a App) Run(args []string) int {
 	selected, mapped := workspace.Agents[agent]
 	if !mapped {
 		selected.VM = cfg.DefaultOptions(agent)
+	}
+	savedEnv := selected.EnvNames
+	switch {
+	case set["env"]:
+		selected.EnvNames = envNames
+	case *clearEnv:
+		selected.EnvNames = nil
+	default:
+		selected.EnvNames, err = checkedEnvNames(savedEnv)
+		if err != nil {
+			return a.fail(2, fmt.Errorf("saved environment: %w (export it or run nook --clear-env)", err))
+		}
 	}
 	if set["mount"] {
 		selected.Mounts = nil
@@ -448,14 +475,14 @@ func (a App) Run(args []string) int {
 		}
 	}
 	vmArgs := vm.Args(project, p.AgentDir(selected.Profile, agent), selected.VM, adapter, a.Interactive(), pass, selected.Mounts...)
-	networkArgs := []string{"machine", "run"}
+	launchArgs := append([]string{"machine", "run"}, envForwardArgs(selected.EnvNames)...)
 	if selected.Network == "ask" {
-		networkArgs = append(networkArgs, "--mediated-egress")
+		launchArgs = append(launchArgs, "--mediated-egress")
 	}
 	for _, cidr := range selected.AllowPrivate {
-		networkArgs = append(networkArgs, "--allow-private", cidr)
+		launchArgs = append(launchArgs, "--allow-private", cidr)
 	}
-	vmArgs = append(networkArgs, vmArgs[2:]...)
+	vmArgs = append(launchArgs, vmArgs[2:]...)
 	if *dryRun {
 		data, err := json.MarshalIndent(append([]string{"smolvm"}, images.WithTools(vmArgs, managedImage)...), "", "  ")
 		if err != nil {
@@ -465,6 +492,10 @@ func (a App) Run(args []string) int {
 		return 0
 	}
 	err = config.Update(p.ConfigFile(), func(current *config.Config) error {
+		w := current.Projects[project]
+		if !set["env"] && !*clearEnv && !slices.Equal(w.Agents[agent].EnvNames, savedEnv) {
+			return errors.New("saved environment forwards changed; retry launch")
+		}
 		if err := p.ValidateMounts(selected.Mounts, a.Agents.ReservedPaths()...); err != nil {
 			return err
 		}
@@ -486,7 +517,6 @@ func (a App) Run(args []string) int {
 		if _, err := p.EnsureAgentDir(selected.Profile, agent); err != nil {
 			return err
 		}
-		w := current.Projects[project]
 		if w.Agents == nil {
 			w.Agents = make(map[string]config.Project)
 		}
@@ -509,6 +539,9 @@ func (a App) Run(args []string) int {
 			mode = "read-only"
 		}
 		fmt.Fprintf(a.Err, "Mount: %s -> %s (%s)\n", mount.Host, mount.Guest, mode)
+	}
+	if len(selected.EnvNames) > 0 {
+		fmt.Fprintf(a.Err, "Forwarded environment: %s\n", strings.Join(selected.EnvNames, ", "))
 	}
 	launch, err := telemetry.Prepare(adapter, a.Interactive(), pass)
 	if err != nil {

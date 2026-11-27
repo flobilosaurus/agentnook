@@ -224,6 +224,13 @@ func (m *fleetModel) refreshDetails() {
 	add("Agent uptime", uptime)
 	add("Launch limits", fmt.Sprintf("%d vCPU · %d MiB RAM", vm.CPUs, vm.MemoryMiB))
 	add("Network mode", monitorKnown(vm.Network))
+	env := "none"
+	if vm.EnvNames == nil {
+		env = "unknown"
+	} else if len(vm.EnvNames) > 0 {
+		env = monitorText(strings.Join(vm.EnvNames, ", "))
+	}
+	add("Forwarded environment", env)
 	add("Mounts", fmt.Sprintf("%d", len(vm.Mounts)))
 	for _, mount := range vm.Mounts {
 		mode := "rw"

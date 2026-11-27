@@ -29,7 +29,7 @@ func configStatusFixture(current string) configStatusModel {
 	}
 	c.DefaultImages["pi"] = "dev-00"
 	c.Projects["/work/current"] = config.Workspace{Agent: "pi", Agents: map[string]config.Project{
-		"pi": {Profile: "work", VM: c.Images[1].VM},
+		"pi": {Profile: "work", VM: c.Images[1].VM, EnvNames: []string{"GITHUB_TOKEN", "OPENAI_API_KEY"}},
 	}}
 	c.Projects["/work/alpha"] = config.Workspace{Agent: "pi", Agents: map[string]config.Project{
 		"pi": {Profile: "private", VM: c.Images[1].VM},
@@ -104,7 +104,7 @@ func TestConfigStatusOpensAndSelectsCurrentProject(t *testing.T) {
 	for _, want := range []string{
 		"▾ dev-01", "▸   └ current", "Saved selection · current [current folder]", "Path: /work/current",
 		"Agent: pi (active for this path)", "Profile: work", "Saved image: dev-01 (missing)",
-		"Agent default for new selections: dev-00",
+		"Agent default for new selections: dev-00", "Configured environment: GITHUB_TOKEN,", "OPENAI_API_KEY",
 	} {
 		if !strings.Contains(view(), want) {
 			t.Fatalf("missing %q:\n%s", want, view())
@@ -124,7 +124,7 @@ func TestConfigStatusOpensAndSelectsCurrentProject(t *testing.T) {
 		t.Fatalf("branch did not reopen to the current path:\n%s", view())
 	}
 	key(tea.KeyDown)
-	if !strings.Contains(view(), "Path: /work/alpha") {
+	if !strings.Contains(view(), "Path: /work/alpha") || !strings.Contains(view(), "Configured environment: none") || strings.Contains(view(), "GITHUB_TOKEN") {
 		t.Fatalf("next path not selected:\n%s", view())
 	}
 }

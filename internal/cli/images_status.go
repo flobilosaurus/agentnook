@@ -12,6 +12,7 @@ import (
 const imagesStatusUsage = `Usage:
   nook images status   Show managed images, configured tools and saved project paths
 
+Shows configured environment variable names in saved project selections (no values).
 Reads the local catalog without starting a VM or changing configuration.
 Terminal input and output enable the interactive view; otherwise prints text.
 Keys: up/down or j/k select a row, Enter toggles an image branch,

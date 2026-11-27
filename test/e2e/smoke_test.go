@@ -143,5 +143,6 @@ func TestRealVM(t *testing.T) {
 	if err := json.Unmarshal(auth, &credentials); err != nil || credentials == nil || len(credentials) != 0 {
 		t.Fatalf("expected a new, empty credential store; parse error: %v", err)
 	}
+	t.Run("EnvironmentForwarding", fixture.testPiEnvironmentForwarding)
 	t.Run("NetworkApproval", fixture.testPiNetworkApproval)
 }

@@ -35,7 +35,8 @@ type Instance struct {
 	Workspace                   Workspace
 	ImageName, BaseImage        string
 	Agent, AgentVersion         string
-	Network                     string // Launch label; empty for older machines.
+	Network                     string   // Launch label; empty for older machines.
+	EnvNames                    []string // Launch label; nil if unknown, empty if none.
 	CPUs, MemoryMiB             int
 	PID                         *int
 	StorageGiB                  *int
@@ -43,6 +44,18 @@ type Instance struct {
 	Ephemeral                   bool
 	Mounts                      []config.Mount
 	Activity                    telemetry.Sample
+}
+
+func launchEnvNames(labels map[string]string) []string {
+	value, ok := labels["agentnook.env"]
+	if !ok {
+		return nil
+	}
+	if value == "" {
+		return []string{}
+	}
+	names, _ := config.NormalizeEnvNames(strings.Split(value, ",")) // Invalid labels are unknown.
+	return names
 }
 
 type Snapshot struct {
@@ -132,7 +145,7 @@ func (s *Source) Load(ctx context.Context) (Snapshot, error) {
 		}
 		result.Instances = append(result.Instances, Instance{
 			Name: machine.Name, State: machine.State, Profile: profile, Image: image, Agent: agent, Project: project, Network: network,
-			CPUs: machine.CPUs, MemoryMiB: machine.MemoryMiB, PID: machine.PID,
+			EnvNames: launchEnvNames(machine.Labels), CPUs: machine.CPUs, MemoryMiB: machine.MemoryMiB, PID: machine.PID,
 			StorageGiB: machine.StorageGiB, CreatedAt: created, Ephemeral: machine.Ephemeral || machine.Labels["agentnook.ephemeral"] == "true", Mounts: shares,
 			Activity: s.activitySample(machine.Name, shares, usedReaders),
 		})

@@ -27,11 +27,11 @@ func watchKey(value string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, R
 
 func fleetSnapshot() fleet.Snapshot {
 	return fleet.Snapshot{Instances: []fleet.Instance{
-		{Name: "run-a", Project: "/repo", Agent: "pi", Profile: "private", State: "running", Network: "ask", CPUs: 2, MemoryMiB: 2048,
+		{Name: "run-a", Project: "/repo", Agent: "pi", Profile: "private", State: "running", Network: "ask", EnvNames: []string{"API_TOKEN", "DEBUG"}, CPUs: 2, MemoryMiB: 2048,
 			AgentVersion: "1.4.0", Image: "/images/dev.smolmachine", ImageName: "dev", BaseImage: "node:24-bookworm", Mounts: []config.Mount{
 				{Host: "/repo", Guest: "/workspace"}, {Host: "/data/profiles/private/pi", Guest: "/root"}, {Host: "/docs", Guest: "/mnt/docs", ReadOnly: true},
 			}},
-		{Name: "run-c", Project: "/elsewhere", Agent: "claude", Profile: "work", State: "unreachable", Network: "full", CPUs: 4, MemoryMiB: 4096},
+		{Name: "run-c", Project: "/elsewhere", Agent: "claude", Profile: "work", State: "unreachable", Network: "full", EnvNames: []string{}, CPUs: 4, MemoryMiB: 4096},
 		{Name: "run-b", Project: "/repo", Agent: "pi", Profile: "private", State: "running"},
 	}}
 }
@@ -51,7 +51,7 @@ func loadedFleet(t *testing.T) fleetModel {
 func TestWatchListAndDetails(t *testing.T) {
 	m := loadedFleet(t)
 	view := ansi.Strip(m.View())
-	for _, value := range []string{"nook watch", "All projects", "3 VMs · 2 projects", "Profile private", "Profile work", "repo · VM run-a", "Network: ask · 3 mounts", "Launch limits  2 vCPU", "Network mode  ask", "/docs → /mnt/docs [ro]"} {
+	for _, value := range []string{"nook watch", "All projects", "3 VMs · 2 projects", "Profile private", "Profile work", "repo · VM run-a", "Network: ask · 3 mounts", "Launch limits  2 vCPU", "Network mode  ask", "Forwarded environment  API_TOKEN, DEBUG", "/docs → /mnt/docs [ro]"} {
 		if !strings.Contains(view, value) {
 			t.Errorf("missing %q in\n%s", value, view)
 		}
@@ -65,11 +65,11 @@ func TestWatchListAndDetails(t *testing.T) {
 			t.Fatal("not navigating visible order", m.instance())
 		}
 	}
-	if view := ansi.Strip(m.View()); !strings.Contains(view, "Network mode  full") || !strings.Contains(view, "unreachable") || strings.Contains(view, "/mnt/docs") {
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "Network mode  full") || !strings.Contains(view, "unreachable") || !strings.Contains(view, "Forwarded environment  none") || strings.Contains(view, "API_TOKEN") || strings.Contains(view, "/mnt/docs") {
 		t.Fatal(view)
 	}
 	m, _ = fleetUpdate(m, watchKey("k"))
-	if !strings.Contains(ansi.Strip(m.View()), "Network mode  unknown") {
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "Network mode  unknown") || !strings.Contains(view, "Forwarded environment  unknown") {
 		t.Fatal("missing mode must not be guessed")
 	}
 }

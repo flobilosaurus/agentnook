@@ -164,9 +164,12 @@ func TestSourceAllWorkspacesHomeAndCatalogMetadata(t *testing.T) {
 		switch name {
 		case "run-1":
 			machines[len(machines)-1].Labels["agentnook.network"] = "ask"
+			machines[len(machines)-1].Labels["agentnook.env"] = "API_TOKEN,DEBUG"
 		case "run-2":
 			machines[len(machines)-1].Labels["agentnook.network"] = "invalid"
+			machines[len(machines)-1].Labels["agentnook.env"] = "API_TOKEN=secret"
 		case "child":
+			machines[len(machines)-1].Labels["agentnook.env"] = ""
 			project += "/child"
 		case "parent":
 			project = filepath.Dir(project)
@@ -196,6 +199,9 @@ func TestSourceAllWorkspacesHomeAndCatalogMetadata(t *testing.T) {
 		t.Fatalf("%+v %v", got, err)
 	}
 	item := got.Instances[2] // child, parent, run-1, run-2; other data homes excluded.
+	if empty, legacy, invalid := got.Instances[0].EnvNames, got.Instances[1].EnvNames, got.Instances[3].EnvNames; empty == nil || len(empty) != 0 || legacy != nil || invalid != nil || strings.Join(item.EnvNames, ",") != "API_TOKEN,DEBUG" {
+		t.Fatal("wrong launch environment metadata")
+	}
 	if item.Name != "run-1" || item.Network != "ask" || got.Instances[3].Network != "" || !item.Ephemeral || item.Image != options.Image || item.Profile != "work" || item.ImageName != "dev" || item.AgentVersion != "1.4.0" || item.BaseImage != "node:24-bookworm" || item.CPUs != 2 || item.MemoryMiB != 2048 || item.StorageGiB != nil || len(item.Mounts) != 3 || !item.Mounts[2].ReadOnly {
 		t.Fatalf("wrong snapshot: %+v", item)
 	}

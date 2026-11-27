@@ -52,6 +52,7 @@ type Project struct {
 	Profile      string   `toml:"profile"`
 	VM           Options  `toml:"vm"`
 	Mounts       []Mount  `toml:"mounts,omitempty"`
+	EnvNames     []string `toml:"env,omitempty"`     // Host variable names only, never values.
 	Network      string   `toml:"network,omitempty"` // Empty/full skips approvals; all modes block private targets.
 	AllowPrivate []string `toml:"allow_private,omitempty"`
 }
@@ -277,6 +278,9 @@ func (c Config) Validate() error {
 			}
 			if err := ValidateMounts(project.Mounts); err != nil {
 				return fmt.Errorf("project %q: %w", path, err)
+			}
+			if _, err := NormalizeEnvNames(project.EnvNames); err != nil {
+				return fmt.Errorf("project %q: env: %w", path, err)
 			}
 		}
 	}

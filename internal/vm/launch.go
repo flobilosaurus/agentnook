@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/flobilosaurus/agentnook/internal/config"
 )
 
 // Find rejects unsupported runtimes before creating profiles or build storage.
@@ -57,6 +59,7 @@ func Launch(binary string, args []string, streams IO) (code int) {
 	create := []string{"machine", "create", "--name", name}
 	execute := []string{"machine", "exec", "--name", name}
 	source := ""
+	var envNames []string
 	mediated := false
 	privateExceptions := false
 	split := -1
@@ -87,6 +90,17 @@ func Launch(binary string, args []string, streams IO) (code int) {
 			privateExceptions = true
 		}
 		i++
+		// Forward values only to the agent exec. Watch gets validated names, never values.
+		if arg == "--secret-env" {
+			guest, host, ok := strings.Cut(value, "=")
+			if !ok || host == "" {
+				fmt.Fprintln(streams.Err, "nook: invalid environment forward")
+				return 1
+			}
+			envNames = append(envNames, guest)
+			execute = append(execute, arg, value)
+			continue
+		}
 		create = append(create, arg, value)
 		if arg == "--from" {
 			source = value
@@ -118,8 +132,14 @@ func Launch(binary string, args []string, streams IO) (code int) {
 	if mediated {
 		networkMode = "ask"
 	}
+	envNames, err := config.NormalizeEnvNames(envNames)
+	if err != nil {
+		fmt.Fprintln(streams.Err, "nook: invalid environment forward")
+		return 1
+	}
 	create = append(create, "--label", "agentnook.image="+source,
 		"--label", "agentnook.network="+networkMode,
+		"--label", "agentnook.env="+strings.Join(envNames, ","),
 		"--label", "agentnook.ephemeral=true", "--", "sleep", "infinity")
 	execute = append(execute, "--")
 	execute = append(execute, args[split+1:]...)

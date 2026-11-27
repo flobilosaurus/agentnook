@@ -25,7 +25,7 @@ func TestImagesStatusShowsImageCompositionWithoutRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.Projects[f.project] = config.Workspace{Agent: dev.VM.Agent, Agents: map[string]config.Project{
-		dev.VM.Agent: {Profile: "work", VM: dev.VM},
+		dev.VM.Agent: {Profile: "work", VM: dev.VM, EnvNames: []string{"NOOK_STATUS_TOKEN", "NOOK_STATUS_UNSET"}},
 	}}
 	file := filepath.Join(f.data, "config.toml")
 	if err := config.Save(file, c); err != nil {
@@ -36,7 +36,11 @@ func TestImagesStatusShowsImageCompositionWithoutRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", "")
+	t.Setenv("NOOK_STATUS_TOKEN", "test-env-value-must-not-appear")
 	f.run(t, 0, "images", "status")
+	if strings.Contains(f.out.String(), "test-env-value-must-not-appear") {
+		t.Fatal("status printed an environment value")
+	}
 	for _, want := range []string{
 		"Config: " + file, "Managed images: 2", "dev [default for pi] [current folder]",
 		"Agent: Pi 1.4.0", "Linux base: node:24-bookworm (" + dev.Architecture + ")",
@@ -45,6 +49,7 @@ func TestImagesStatusShowsImageCompositionWithoutRuntime(t *testing.T) {
 		"apt packages (versions not recorded): git, ripgrep, fd-find, ca-certificates",
 		"Requested mise tools (resolved versions not recorded):\n    - rg@latest\n    - aqua:sharkdp/fd@10.3.0",
 		"Artifact: " + old.VM.Image + " (missing or invalid)", "Requested mise tools: none recorded",
+		"Saved selection: \"" + f.project + "\" (Pi / work)\n    Configured environment: NOOK_STATUS_TOKEN, NOOK_STATUS_UNSET",
 	} {
 		if !strings.Contains(f.out.String(), want) {
 			t.Fatalf("missing %q in %s", want, &f.out)

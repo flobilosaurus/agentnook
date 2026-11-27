@@ -18,7 +18,7 @@ One list grouped by profile. VM rows show project, network mode and mount count.
 Only VM rows are selectable. Details for the selected VM appear below the list.
 Git grouping is optional and read-only; unavailable metadata falls back to folders.
 Uses smolvm machine ls --json and --verbose; refreshes after each poll (1s).
-Shows VM status, launch limits, network mode, and all mounts without tabs.
+Shows VM status, launch limits, network mode, forwarded variable names, and mounts.
 Shows agent activity, runtime uptime and heartbeat from shared guest telemetry.
 Missing or stale agent telemetry remains unknown; VM status stays separate.
 

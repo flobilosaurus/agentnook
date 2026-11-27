@@ -12,7 +12,7 @@ func TestHelpSeparatesEverydayAndAdvancedOptions(t *testing.T) {
 		t.Setenv("PATH", "")
 		f.run(t, 0, args...)
 		help := f.out.String()
-		for _, want := range []string{"First run:", "Later runs:", "--select", "--help-all", "nook -- --continue"} {
+		for _, want := range []string{"First run:", "Later runs:", "--select", "--env NAME", "--help-all", "nook -- --continue"} {
 			if !strings.Contains(help, want) {
 				t.Fatalf("missing %q: %s", want, help)
 			}

@@ -200,6 +200,7 @@ func (m configStatusModel) selectionDetails() (string, []string) {
 		"Profile: " + assignment.Profile,
 		"Saved image: " + image.Name + " (" + image.ArtifactState + ")",
 		"Agent default for new selections: " + assignment.AgentDefault,
+		assignment.EnvironmentDetail(),
 	}
 }
 

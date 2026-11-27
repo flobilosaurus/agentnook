@@ -64,18 +64,23 @@ func TestLaunchDisposableLifecycleAndExitCodes(t *testing.T) {
 			binary := filepath.Join(dir, "smolvm")
 			t.Setenv("VM_TEST_LOG", log)
 			t.Setenv("VM_TEST_FAIL", tc.failure)
+			const secret = "test-secret with spaces; $HOME\nsecond line"
+			t.Setenv("VM_TEST_SECRET", secret)
 			script := `#!/bin/sh
 printf '%s %s\n' "$1" "$2" >> "$VM_TEST_LOG"
 printf '%s\000' "$@" > "$VM_TEST_LOG.$2"
 if [ "$2" = "$VM_TEST_FAIL" ]; then exit 7; fi
-if [ "$2" = exec ]; then exit ` + strconv.Itoa(tc.exit) + `; fi
+if [ "$2" = exec ]; then
+    printf '%s' "$VM_TEST_SECRET" > "$VM_TEST_LOG.exec.env"
+    exit ` + strconv.Itoa(tc.exit) + `
+fi
 exit 0
 `
 			if err := os.WriteFile(binary, []byte(script), 0o700); err != nil {
 				t.Fatal(err)
 			}
 			pass := []string{"pi", "--print", "spaces ; $(echo nope)", "--select"}
-			args := []string{"machine", "run", "--net", "--block-private", "--allow-private", "10.20.0.0/16", "--interactive", "--from", "/private/image.smolmachine", "--cpus", "3", "--mem", "4096", "--storage", "8", "--user", "root", "--workdir", "/workspace", "--env", "HOME=/root", "--volume", "/project with spaces:/workspace", "--volume", "/profile:/root", "--tty", "--"}
+			args := []string{"machine", "run", "--net", "--block-private", "--allow-private", "10.20.0.0/16", "--interactive", "--from", "/private/image.smolmachine", "--cpus", "3", "--mem", "4096", "--storage", "8", "--user", "root", "--workdir", "/workspace", "--env", "HOME=/root", "--secret-env", "VM_TEST_SECRET=VM_TEST_SECRET", "--volume", "/project with spaces:/workspace", "--volume", "/profile:/root", "--tty", "--"}
 			args = append(args, pass...)
 			var output bytes.Buffer
 			if got := Launch(binary, args, IO{Err: &output}); got != tc.want {
@@ -95,7 +100,7 @@ exit 0
 			execute, _ := os.ReadFile(log + ".exec")
 			created := strings.Split(strings.TrimSuffix(string(create), "\x00"), "\x00")
 			executed := strings.Split(strings.TrimSuffix(string(execute), "\x00"), "\x00")
-			for _, want := range []string{"agentnook.image=/private/image.smolmachine", "agentnook.network=full", "agentnook.ephemeral=true", "/project with spaces:/workspace", "/profile:/root", "--from", "--block-private", "10.20.0.0/16"} {
+			for _, want := range []string{"agentnook.image=/private/image.smolmachine", "agentnook.network=full", "agentnook.env=VM_TEST_SECRET", "agentnook.ephemeral=true", "/project with spaces:/workspace", "/profile:/root", "--from", "--block-private", "10.20.0.0/16"} {
 				if !strings.Contains(string(create), want+"\x00") {
 					t.Fatal(created)
 				}
@@ -109,6 +114,19 @@ exit 0
 			deleted, _ := os.ReadFile(log + ".delete")
 			if !bytes.Contains(deleted, []byte(created[3]+"\x00")) {
 				t.Fatal("wrong cleanup target")
+			}
+			for _, stage := range []string{"create", "start", "exec", "delete"} {
+				data, err := os.ReadFile(log + "." + stage)
+				if err != nil || bytes.Contains(data, []byte(secret)) {
+					t.Fatal(stage, err, "secret value must not appear in argv")
+				}
+				ref := []byte("--secret-env\x00VM_TEST_SECRET=VM_TEST_SECRET\x00")
+				if bytes.Contains(data, ref) != (stage == "exec") {
+					t.Fatal("secret reference must appear only in exec", stage)
+				}
+			}
+			if got, err := os.ReadFile(log + ".exec.env"); err != nil || string(got) != secret {
+				t.Fatal("smolvm exec did not inherit host variable", err)
 			}
 		})
 	}
@@ -159,8 +177,8 @@ printf '%s' "${SMOLVM_INTERCEPTOR_TOKEN:-}" > "$VM_TEST_LOG.$2.token"
 		if err != nil || bytes.Contains(data, []byte(token)) {
 			t.Fatal(stage, err, "token leaked into argv")
 		}
-		if stage == "create" && !bytes.Contains(data, []byte("agentnook.network=ask\x00")) {
-			t.Fatal("missing network mode label")
+		if stage == "create" && (!bytes.Contains(data, []byte("agentnook.network=ask\x00")) || !bytes.Contains(data, []byte("agentnook.env=\x00"))) {
+			t.Fatal("missing network or environment label")
 		}
 		env, _ := os.ReadFile(log + "." + stage + ".token")
 		if stage == "start" {
@@ -177,6 +195,14 @@ func TestLaunchRejectsPrivateExceptionsUnderMediation(t *testing.T) {
 	args := []string{"machine", "run", "--net", "--block-private", "--mediated-egress", "--allow-private", "10.20.0.0/16", "--from", "/image.smolmachine", "--", "agent"}
 	var output bytes.Buffer
 	if code := Launch("/must-not-run", args, IO{Err: &output, Mediation: &Mediation{Address: "127.0.0.1:12345", Token: strings.Repeat("ab", 32)}}); code != 1 || !strings.Contains(output.String(), "bypass mediated approvals") {
+		t.Fatal(code, output.String())
+	}
+}
+
+func TestLaunchRejectsInvalidEnvironmentLabelInput(t *testing.T) {
+	args := []string{"machine", "run", "--from", "/image.smolmachine", "--secret-env", "TOKEN,invalid=HOST_TOKEN", "--", "agent"}
+	var output bytes.Buffer
+	if code := Launch("/must-not-run", args, IO{Err: &output}); code != 1 || output.String() != "nook: invalid environment forward\n" {
 		t.Fatal(code, output.String())
 	}
 }

@@ -32,6 +32,14 @@ type ImageStatus struct {
 type ProjectAssignment struct {
 	Path, Agent, Profile, AgentDefault string
 	Active, CurrentFolder              bool
+	EnvNames                           []string
+}
+
+func (p ProjectAssignment) EnvironmentDetail() string {
+	if len(p.EnvNames) == 0 {
+		return "Configured environment: none"
+	}
+	return "Configured environment: " + strings.Join(p.EnvNames, ", ")
 }
 
 // DescribeStatus reads catalog metadata and checks local artifact presence. It
@@ -99,7 +107,7 @@ func DescribeStatus(c config.Config, configFile, currentPath string, catalog age
 			assignment := ProjectAssignment{
 				Path: path, Agent: catalog.Label(agent), Profile: project.Profile,
 				AgentDefault: c.DefaultImages[agent], Active: workspace.Agent == agent,
-				CurrentFolder: path == currentPath,
+				CurrentFolder: path == currentPath, EnvNames: slices.Clone(project.EnvNames),
 			}
 			item := &status.Images[i]
 			item.Assignments = append(item.Assignments, assignment)
@@ -145,6 +153,9 @@ func (s CatalogStatus) WriteText(out io.Writer) error {
 		fmt.Fprintln(&b, "\n"+item.Title())
 		for _, line := range item.Details() {
 			fmt.Fprintln(&b, "  "+line)
+		}
+		for _, assignment := range item.Assignments {
+			fmt.Fprintf(&b, "  Saved selection: %q (%s / %s)\n    %s\n", assignment.Path, assignment.Agent, assignment.Profile, assignment.EnvironmentDetail())
 		}
 	}
 	_, err := io.WriteString(out, b.String())

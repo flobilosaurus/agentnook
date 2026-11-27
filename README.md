@@ -23,11 +23,25 @@ Danach `nook` im Projektordner starten.
 | `nook --select` | Agent oder Profil wechseln |
 | `nook -- --continue` | Argumente an den Agenten weitergeben |
 | `nook --mount ../lib:/mnt/lib:ro` | Zusätzlichen Ordner schreibgeschützt freigeben |
+| `nook --env GITHUB_TOKEN` | Gespeicherte Liste freigegebener Host-Variablen ersetzen |
+| `nook --clear-env` | Gespeicherte Variablenfreigaben entfernen |
 | `nook images` | Lokale Images anzeigen |
 | `nook images status` | Aufbau der Images und Toollisten anzeigen |
 | `nook watch` | Laufende VMs projektübergreifend anzeigen |
 | `nook network` | Netzwerkhistorie und offene TCP-Freigaben anzeigen |
 | `nook --help-all` | Alle Optionen anzeigen |
+
+## Umgebungsvariablen freigeben
+
+```sh
+nook --env GITHUB_TOKEN --env OPENAI_API_KEY
+```
+
+`--env` ersetzt die bisherige Liste für diesen Projektordner und Agenten. `config.toml` speichert nur Namen, keine Werte. Ein späterer Start mit `nook` verwendet die Liste erneut und liest die aktuellen Werte vom Host. `nook --clear-env` entfernt die Freigaben für künftige Starts.
+
+Die Variablen müssen auf dem Host exportiert sein. Fehlende Variablen führen zum Abbruch. `--env` akzeptiert keine `NAME=WERT`-Zuweisungen. `--dry-run` zeigt nur Namen und ändert nichts an der Konfiguration.
+
+**Nur bewusst freigeben:** Der Agent und seine Kindprozesse können die Werte bei jedem Start lesen und weitergeben.
 
 ## Images und Tools
 
@@ -47,7 +61,7 @@ nook images build pi-dev --agent pi --mise-config ./mise.toml
 
 Beide Flags lassen sich kombinieren.
 
-`nook images status` zeigt die Images, ihre Tools und die gespeicherten Projektzuordnungen, ohne eine VM zu starten.
+`nook images status` zeigt Images, Tools und gespeicherte Projektzuordnungen, ohne eine VM zu starten. Die Details einer Projektzuordnung zeigen die konfigurierten Variablennamen, nie Werte.
 
 ![Image-Status mit ausgewähltem Pi-Image, mise-Tools und aufgeklappter Projektzuordnung](docs/screenshots/images-status.png)
 
@@ -79,7 +93,7 @@ Lokale Erweiterungen gehören bei Pi nach `~/.pi/agent/extensions/`, bei OpenCod
 
 ### `nook watch`
 
-`nook watch` zeigt laufende Agenten-VMs über alle Projekte hinweg, gruppiert nach Profil.
+`nook watch` zeigt laufende Agenten-VMs über alle Projekte hinweg, gruppiert nach Profil. Die VM-Details zeigen die beim Start freigegebenen Variablennamen, nicht die aktuelle Konfiguration oder Werte. Für ältere Starts ohne diese Metadaten steht dort `unknown`.
 
 ![Watch-Ansicht mit laufenden Pi-, OpenCode- und Claude-Code-VMs in den Profilen private und work](docs/screenshots/watch.png)
 
